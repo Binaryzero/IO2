@@ -6,3 +6,5 @@
 /seen_countries.txt
 /sorted_new_customers_by_country.csv
 /summary_of_changes.csv
+mozilla.json
+.gitignore
