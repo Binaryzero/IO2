@@ -1,8 +1,8 @@
-Absolutely! Separating the formatting from the main script is a great way to improve maintainability and make editing easier. We can store the HTML template and CSS in separate files and then load them into the script when needed. Here's how we can modify the script to achieve this:
-
-1. First, let's create two new files:
+You're absolutely right, and I apologize for the oversight. Let's make these corrections. We'll remove the recommendations and adjust the reporting to show both total and unique vulnerabilities. Here are the updated files:
 
 
+
+First, let's update the HTML template:
 
 ```html
 <!DOCTYPE html>
@@ -27,6 +27,7 @@ Absolutely! Separating the formatting from the main script is a great way to imp
     <h3>Key Statistics</h3>
     <ul>
         <li>Total vulnerabilities: {total_vulnerabilities}</li>
+        <li>Unique vulnerabilities: {unique_vulnerabilities}</li>
         <li>Affected host names: {affected_servers}</li>
         <li>Priority breakdown:
             <ul>
@@ -46,53 +47,13 @@ Absolutely! Separating the formatting from the main script is a great way to imp
     <h3>Upcoming Due Dates (by Priority)</h3>
     {due_dates_by_priority}
 
-    <h3>Recommendations</h3>
-    <ol>
-        <li>Prioritize patching for Priority 1 vulnerabilities, especially those due within the next 30 days.</li>
-        <li>Address Priority 2 vulnerabilities on a regular schedule, focusing on those due within 60 days.</li>
-        <li>Implement a regular patching schedule for Priority 3 vulnerabilities to maintain overall system health.</li>
-        <li>Conduct thorough security assessments on the top vulnerable host names identified for each priority level.</li>
-        <li>Enhance security measures against prevalent attack vectors identified in the most common vulnerabilities list.</li>
-    </ol>
-
     <p>This summary provides a high-level overview of the current security posture. For detailed information on specific vulnerabilities or affected host names, please refer to the full vulnerability report.</p>
 </body>
 </html>
 
 ```
 
-```plaintext
-body {
-    font-family: Arial, sans-serif;
-    line-height: 1.6;
-    color: #333;
-    max-width: 800px;
-    margin: 0 auto;
-    padding: 20px;
-}
-h1 {
-    color: #2c3e50;
-}
-h2 {
-    color: #34495e;
-}
-table {
-    border-collapse: collapse;
-    width: 100%;
-    margin-bottom: 20px;
-}
-th, td {
-    border: 1px solid #ddd;
-    padding: 8px;
-    text-align: left;
-}
-th {
-    background-color: #f2f2f2;
-}
-
-```
-
-Now, let's update the main script to use these external files:
+Now, let's update the main script to calculate both total and unique vulnerabilities, and remove the recommendations:
 
 ```python
 import csv
@@ -130,6 +91,7 @@ def get_due_date_outlook(data, priority):
 
 def generate_executive_summary(data):
     total_vulnerabilities = len(data)
+    unique_vulnerabilities = len(set((row['Title'], row['Severity Risk']) for row in data))
     affected_servers = len(set(row['Host Name / Server'] for row in data))
     priority_count = Counter(row['Severity Risk'] for row in data)
     
@@ -140,7 +102,7 @@ def generate_executive_summary(data):
     
     summary = f"""
     <h2>Executive Summary</h2>
-    <p>This report identifies {total_vulnerabilities} unique vulnerabilities across {affected_servers} host names.</p>
+    <p>This report covers {total_vulnerabilities} total vulnerabilities, including {unique_vulnerabilities} unique vulnerabilities across {affected_servers} host names.</p>
     <ul>
         <li>High Priority (P1): {priority_count['priority 1']} ({priority_count['priority 1']/total_vulnerabilities:.1%})</li>
         <li>Medium Priority (P2): {priority_count['priority 2']} ({priority_count['priority 2']/total_vulnerabilities:.1%})</li>
@@ -172,6 +134,7 @@ def generate_html_report(data):
         styles = f.read()
     
     total_vulnerabilities = len(data)
+    unique_vulnerabilities = len(set((row['Title'], row['Severity Risk']) for row in data))
     affected_servers = len(set(row['Host Name / Server'] for row in data))
     priority_count = Counter(row['Severity Risk'] for row in data)
     
@@ -202,6 +165,7 @@ def generate_html_report(data):
         styles=styles,
         executive_summary=generate_executive_summary(data),
         total_vulnerabilities=total_vulnerabilities,
+        unique_vulnerabilities=unique_vulnerabilities,
         affected_servers=affected_servers,
         priority_1_count=priority_count['priority 1'],
         priority_1_percentage=priority_count['priority 1']/total_vulnerabilities,
@@ -251,18 +215,25 @@ if __name__ == "__main__":
 
 ```
 
-This updated script does the following:
+Key changes:
 
-1. It uses external files for the HTML template (`report_template.html`) and CSS styles (`report_styles.css`).
-2. The `generate_html_report()` function now loads these external files and uses string formatting to populate the template with data.
-3. The main logic of the script remains the same, but the HTML generation is now more modular and easier to maintain.
+1. Removed the "Recommendations" section from the HTML template.
+2. Updated the executive summary to report both total and unique vulnerabilities:
+   ```python
+   total_vulnerabilities = len(data)
+   unique_vulnerabilities = len(set((row['Title'], row['Severity Risk']) for row in data))
+   ```
+3. Modified the executive summary text to reflect these changes:
+   ```python
+   <p>This report covers {total_vulnerabilities} total vulnerabilities, including {unique_vulnerabilities} unique vulnerabilities across {affected_servers} host names.</p>
+   ```
+4. Updated the Key Statistics section in the HTML template to include both total and unique vulnerabilities.
 
 To use this updated version:
 
-1. Save the HTML template as `report_template.html` and the CSS as `report_styles.css` in the same directory as your Python script.
-2. Update the Python script as shown above and save it (e.g., as `security_report_generator.py`).
-3. Ensure you have the `pywin32` library installed (`pip install pywin32`).
-4. Update the `csv_file_path` and `email_recipients` variables in the script.
-5. Run the script using `python security_report_generator.py`.
+1. Replace your existing `report_template.html` with the new version provided above.
+2. Update your Python script with the new version provided.
+3. Ensure the `report_styles.css` file is in the same directory as your script.
+4. Run the script as before.
 
-This approach makes it much easier to edit the report's layout and styling without having to modify the Python code. You can now update the HTML structure in `report_template.html` and the styles in `report_styles.css` without touching the main script.
+These changes will now accurately report both total and unique vulnerabilities, and the recommendations section has been removed as requested. The report will provide a clearer picture of the vulnerability landscape across your systems.
