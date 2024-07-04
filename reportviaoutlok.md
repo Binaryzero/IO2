@@ -1,131 +1,233 @@
-I apologize for the oversight. You're right, and I thank you for catching that error. The issue is that we're using `df_merged` outside of its scope. Let's fix this by restructuring our code to ensure all variables are properly defined and accessible where needed.
+Certainly! I'll provide you with the full, complete file that includes all the necessary functions and the main execution flow. This script will generate a security vulnerability report with an executive summary and send it via Outlook.
 
 
 
 ```python
-import pandas as pd
-import os
-from datetime import datetime
-import random
+import csv
+from collections import Counter
+from datetime import datetime, timedelta
+import win32com.client
 
-def get_processed_ids(file_path):
-    if os.path.exists(file_path):
-        return set(pd.read_csv(file_path, header=None)[0])
-    return set()
+def read_csv_data(file_path):
+    with open(file_path, 'r') as f:
+        reader = csv.DictReader(f)
+        return list(reader)
 
-def save_processed_ids(file_path, ids):
-    pd.DataFrame(list(ids)).to_csv(file_path, index=False, header=False)
+def get_priority_data(data, priority):
+    return [row for row in data if row['Priority'] == f'priority {priority}']
 
-def get_random_pondering(file_path):
-    with open(file_path, 'r') as file:
-        ponderings = file.readlines()
-    return random.choice(ponderings).strip()
+def get_top_vulnerable_servers(data, priority, top_n=5):
+    priority_data = get_priority_data(data, priority)
+    server_counter = Counter(row['Host'] for row in priority_data)
+    return server_counter.most_common(top_n)
 
-def process_new_records():
-    # File to store processed IDs
-    processed_ids_file = "processed_ids.csv"
-    processed_ids = get_processed_ids(processed_ids_file)
+def get_due_date_outlook(data, priority):
+    priority_data = get_priority_data(data, priority)
+    today = datetime.now().date()
+    due_dates = [datetime.strptime(row['Due Date'], '%Y-%m-%d').date() for row in priority_data]
+    
+    time_frames = [10, 30, 45, 60, 100, 180]
+    due_within_periods = {days: sum(1 for date in due_dates if (date - today).days <= days) for days in time_frames}
+    
+    total_vulnerabilities = len(priority_data)
+    return {days: (count, count/total_vulnerabilities if total_vulnerabilities else 0) 
+            for days, count in due_within_periods.items()}
 
-    # Read the lookup file into a DataFrame
-    df_lookup = pd.read_csv("city_lookup.csv")
+def generate_executive_summary(data):
+    total_vulnerabilities = len(data)
+    affected_servers = len(set(row['Host'] for row in data))
+    priority_count = Counter(row['Priority'] for row in data)
+    
+    # Get the top 3 most critical vulnerabilities
+    critical_vulnerabilities = [row for row in data if row['Priority'] == 'priority 1']
+    top_critical = Counter(row['Title'] for row in critical_vulnerabilities).most_common(3)
+    
+    # Get the nearest due date
+    nearest_due_date = min(datetime.strptime(row['Due Date'], '%Y-%m-%d').date() for row in data)
+    
+    summary = f"""
+    <h2>Executive Summary</h2>
+    <p>This report identifies {total_vulnerabilities} unique vulnerabilities across {affected_servers} servers.</p>
+    <ul>
+        <li>High Priority (P1): {priority_count['priority 1']} ({priority_count['priority 1']/total_vulnerabilities:.1%})</li>
+        <li>Medium Priority (P2): {priority_count['priority 2']} ({priority_count['priority 2']/total_vulnerabilities:.1%})</li>
+        <li>Low Priority (P3): {priority_count['priority 3']} ({priority_count['priority 3']/total_vulnerabilities:.1%})</li>
+    </ul>
+    <p>Top 3 critical vulnerabilities:</p>
+    <ol>
+    """
+    
+    for vuln, count in top_critical:
+        summary += f"<li>{vuln} ({count} instances)</li>"
+    
+    summary += f"""
+    </ol>
+    <p>Nearest due date for remediation: {nearest_due_date.strftime('%Y-%m-%d')}</p>
+    <p>Immediate action is required to address high-priority vulnerabilities and those with imminent due dates.</p>
+    """
+    
+    return summary
 
-    # Read the customer data file into a DataFrame
-    df_customers = pd.read_csv("customers-10000.csv")
+def generate_html_report(data):
+    executive_summary = generate_executive_summary(data)
+    
+    total_vulnerabilities = len(data)
+    affected_servers = len(set(row['Host'] for row in data))
+    
+    vulnerability_counter = Counter(row['Title'] for row in data)
+    priority_count = Counter(row['Priority'] for row in data)
+    
+    # Most common vulnerabilities
+    most_common_vulnerabilities = vulnerability_counter.most_common(5)
+    
+    html = f"""
+    <html>
+    <head>
+        <style>
+            body {{ font-family: Arial, sans-serif; line-height: 1.6; color: #333; }}
+            h1 {{ color: #2c3e50; }}
+            h2 {{ color: #34495e; }}
+            table {{ border-collapse: collapse; width: 100%; }}
+            th, td {{ border: 1px solid #ddd; padding: 8px; text-align: left; }}
+            th {{ background-color: #f2f2f2; }}
+        </style>
+    </head>
+    <body>
+        <h1>Security Vulnerability Summary Report</h1>
 
-    # Get all current customer IDs
-    current_ids = set(df_customers["Customer Id"])
+        {executive_summary}
 
-    # Remove processed IDs that are no longer in the data file
-    processed_ids = processed_ids.intersection(current_ids)
+        <hr>
 
-    # Filter to only include rows where Country is 'United States' and Customer Id is new
-    df_customers_filtered = df_customers[
-        (df_customers["Country"] == "United States") & 
-        (~df_customers["Customer Id"].isin(processed_ids))
-    ]
+        <h2>Detailed Report</h2>
 
-    if df_customers_filtered.empty:
-        print("No new records to process.")
-        save_processed_ids(processed_ids_file, processed_ids)  # Save updated processed IDs
-        return
+        <h3>Key Statistics</h3>
+        <ul>
+            <li>Total vulnerabilities: {total_vulnerabilities}</li>
+            <li>Affected servers: {affected_servers}</li>
+            <li>Priority breakdown:
+                <ul>
+                    <li>Priority 1 (High): {priority_count['priority 1']} ({priority_count['priority 1']/total_vulnerabilities:.1%})</li>
+                    <li>Priority 2 (Medium): {priority_count['priority 2']} ({priority_count['priority 2']/total_vulnerabilities:.1%})</li>
+                    <li>Priority 3 (Low): {priority_count['priority 3']} ({priority_count['priority 3']/total_vulnerabilities:.1%})</li>
+                </ul>
+            </li>
+        </ul>
 
-    # Merge the filtered customer DataFrame with the lookup DataFrame
-    df_merged = df_customers_filtered.merge(
-        df_lookup[["City", "UUID", "ZIP Code", "Area Code"]], on="City", how="left"
-    )
+        <h3>Most Common Vulnerabilities</h3>
+        {generate_html_list(most_common_vulnerabilities)}
 
-    # Combine 'First Name' and 'Last Name' into 'Legal Name'
-    df_merged["Legal Name"] = df_merged["First Name"] + " " + df_merged["Last Name"]
+        <h3>Servers with Most Vulnerabilities (by Priority)</h3>
+    """
 
-    # Add a new column 'Reviewed' with the static text "Reviewed by Bob"
-    df_merged["Reviewed"] = "Reviewed by Bob"
+    for priority in range(1, 4):
+        top_servers = get_top_vulnerable_servers(data, priority)
+        html += f"<h4>Priority {priority}</h4>"
+        if top_servers:
+            html += generate_html_list(top_servers)
+        else:
+            html += "<p>No vulnerabilities found for this priority.</p>"
 
-    # Add a new column 'Pondering' with a random pondering for each row
-    df_merged["Pondering"] = df_merged.apply(lambda _: get_random_pondering("pondering2.txt"), axis=1)
+    html += "<h3>Upcoming Due Dates (by Priority)</h3>"
 
-    # Apply the column mapping
-    column_mapping = {
-        "Customer Id": "ID",
-        "Email": "email address",
-        "Legal Name": "Legal Name",
-        "UUID": "UUID",
-        "Reviewed": "Reviewed",
-        "ZIP Code": "ZIP Code",
-        "Area Code": "Area Code",
-        "Pondering": "Pondering"
-    }
+    for priority in range(1, 4):
+        due_date_outlook = get_due_date_outlook(data, priority)
+        html += f"<h4>Priority {priority}</h4>"
+        if sum(count for count, _ in due_date_outlook.values()) > 0:
+            html += "<table><tr><th>Outlook</th><th>Vulnerabilities</th><th>Percentage</th></tr>"
+            for days, (count, percentage) in due_date_outlook.items():
+                html += f"<tr><td>{days}-day outlook</td><td>{count}</td><td>{percentage:.1%}</td></tr>"
+            html += "</table>"
+        else:
+            html += "<p>No vulnerabilities found for this priority.</p>"
 
-    # Get current date for file naming
-    current_date = datetime.now().strftime("%Y%m%d")
+    html += """
+        <h3>Recommendations</h3>
+        <ol>
+            <li>Prioritize patching for Priority 1 vulnerabilities, especially those due within the next 30 days.</li>
+            <li>Address Priority 2 vulnerabilities on a regular schedule, focusing on those due within 60 days.</li>
+            <li>Implement a regular patching schedule for Priority 3 vulnerabilities to maintain overall system health.</li>
+            <li>Conduct thorough security assessments on the top vulnerable servers identified for each priority level.</li>
+            <li>Enhance security measures against prevalent attack vectors identified in the most common vulnerabilities list.</li>
+        </ol>
 
-    # Iterate through unique cities and create a new file for each city
-    for city in df_merged["City"].unique():
-        df_city = df_merged[df_merged["City"] == city]
-        df_city_mapped = df_city[list(column_mapping.keys())].rename(columns=column_mapping)
-        
-        # Define the file name based on the city and current date
-        file_name = f"datavue_{city.replace(' ', '_').replace('/', '_')}_{current_date}.csv"
-        
-        # Write the DataFrame to a new CSV file
-        df_city_mapped.to_csv(file_name, index=False)
-        
-        print(f"The new data for {city} has been written to '{file_name}'.")
+        <p>This summary provides a high-level overview of the current security posture. For detailed information on specific vulnerabilities or affected servers, please refer to the full vulnerability report.</p>
+    </body>
+    </html>
+    """
+    return html
 
-    # Update processed IDs
-    new_processed_ids = set(df_merged["Customer Id"])
-    processed_ids.update(new_processed_ids)
-    save_processed_ids(processed_ids_file, processed_ids)
+def generate_html_list(items):
+    return "<ol>" + "".join(f"<li>{item[0]}: {item[1]} instances</li>" for item in items) + "</ol>"
 
-    print(f"Processed {len(df_merged)} new records.")
-    print(f"Total records in processed IDs: {len(processed_ids)}")
-    print(f"Files written for cities: {', '.join(df_merged['City'].unique())}")
+def send_outlook_email(subject, body, recipients):
+    outlook = win32com.client.Dispatch("Outlook.Application").GetNamespace("MAPI")
+    message = outlook.Application.CreateItem(0)
+    message.Subject = subject
+    message.HTMLBody = body
+    
+    if isinstance(recipients, str):
+        recipients = [recipients]
+    
+    for recipient in recipients:
+        message.Recipients.Add(recipient)
+    
+    message.Send()
+    print(f"Email sent to: {', '.join(recipients)}")
 
 if __name__ == "__main__":
-    process_new_records()
+    # Configuration
+    csv_file_path = 'path_to_your_csv_file.csv'
+    email_recipients = ['recipient1@example.com', 'recipient2@example.com']  # Add your recipients here
+    email_subject = 'Security Vulnerability Summary Report'
+
+    # Read data and generate report
+    data = read_csv_data(csv_file_path)
+    report_html = generate_html_report(data)
+    
+    # Save report to file (optional)
+    with open('security_report.html', 'w') as f:
+        f.write(report_html)
+    
+    # Send email
+    try:
+        send_outlook_email(email_subject, report_html, email_recipients)
+        print("Report sent successfully via Outlook!")
+    except Exception as e:
+        print(f"An error occurred while sending the email: {str(e)}")
+        print("The report has been saved as 'security_report.html' in the current directory.")
+
+    print("Process completed.")
 
 ```
 
-Here are the key changes and explanations:
+This complete script includes all necessary functions to:
 
-1. The overall structure of the script remains the same, but we've ensured that all operations on `df_merged` are within the same function scope.
+1. Read and process the CSV data
+2. Generate an executive summary
+3. Create a detailed HTML report
+4. Send the report via Outlook
 
-2. We've moved the creation and processing of `df_merged` earlier in the function, before the loop that writes individual city files.
+To use this script:
 
-3. We've added the suggested logging at the end of the function to list all cities for which files were written:
+1. Save it as a Python file (e.g., `security_report_generator.py`).
 
-   ```python
-   print(f"Files written for cities: {', '.join(df_merged['City'].unique())}")
+2. Install the required library by running:
+   ```
+   pip install pywin32
    ```
 
-4. The updating of processed IDs remains at the end of the function, ensuring all new records are processed before updating the file.
+3. Update the following variables in the script:
+   - `csv_file_path`: Set this to the path of your CSV file containing the vulnerability data.
+   - `email_recipients`: Add the email addresses of the recipients who should receive the report.
 
-These modifications should resolve the 'df_merged is not defined' error you encountered. The script will now:
+4. Ensure Outlook is installed and configured on your Windows machine.
 
-1. Properly create and process the `df_merged` DataFrame.
-2. Write a file for each unique city among the new records.
-3. Update the processed IDs file with all the new IDs at the end.
-4. Provide a summary of the cities for which files were written.
+5. Run the script using:
+   ```
+   python security_report_generator.py
+   ```
 
-This version of the script should run without the scoping error you encountered. It processes all new records, writes files for each city, and correctly updates the processed IDs.
+The script will generate a comprehensive security vulnerability report with an executive summary, save it as an HTML file, and send it via Outlook to the specified recipients.
 
-If you encounter any further issues or have any questions about the changes, please don't hesitate to ask. We can continue to refine the script as needed.
+This all-in-one script provides a complete solution for generating and distributing your security vulnerability reports, making it easy to keep stakeholders informed about the current security posture of your systems.
