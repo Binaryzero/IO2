@@ -1,4 +1,4 @@
-I understand. We'll update the script to accommodate these field name changes while keeping the report terminology consistent. Here's the revised script:
+I apologize for the confusion. Thank you for clarifying the date format. Let's update the script to handle this new date format correctly.
 
 
 
@@ -14,7 +14,7 @@ def read_csv_data(file_path):
         return list(reader)
 
 def parse_date(date_string):
-    return datetime.strptime(date_string, '%m/%d/%Y %I:%M:%S %p')
+    return datetime.strptime(date_string, '%Y-%m-%d %H:%M:%S')
 
 def get_priority_data(data, priority):
     return [row for row in data if row['Severity Risk'] == f'priority {priority}']
@@ -65,7 +65,7 @@ def generate_executive_summary(data):
     
     summary += f"""
     </ol>
-    <p>Nearest due date for remediation: {nearest_due_date.strftime('%m/%d/%Y')}</p>
+    <p>Nearest due date for remediation: {nearest_due_date.strftime('%Y-%m-%d')}</p>
     <p>Immediate action is required to address high-priority vulnerabilities and those with imminent due dates.</p>
     """
     
@@ -206,31 +206,24 @@ if __name__ == "__main__":
 
 Key changes in this updated script:
 
-1. Updated field names in data processing functions:
-   - Changed `Host` to `Host Name / Server`
-   - Changed `Priority` to `Severity Risk`
-
-2. Kept the report terminology consistent:
-   - Still refers to "Host Name" in the report text
-   - Still uses "Priority" in the report text
-
-3. Updated the `get_priority_data()` function:
+1. Modified the `parse_date()` function to handle the new date format:
    ```python
-   def get_priority_data(data, priority):
-       return [row for row in data if row['Severity Risk'] == f'priority {priority}']
+   def parse_date(date_string):
+       return datetime.strptime(date_string, '%Y-%m-%d %H:%M:%S')
    ```
 
-4. Modified the `get_top_vulnerable_servers()` function:
+2. Updated the date format in the executive summary to match the input format (YYYY-MM-DD):
    ```python
-   def get_top_vulnerable_servers(data, priority, top_n=5):
-       priority_data = get_priority_data(data, priority)
-       server_counter = Counter(row['Host Name / Server'] for row in priority_data)
-       return server_counter.most_common(top_n)
+   f"<p>Nearest due date for remediation: {nearest_due_date.strftime('%Y-%m-%d')}</p>"
    ```
 
-5. Updated references to these fields throughout the script, particularly in the `generate_executive_summary()` and `generate_html_report()` functions.
+These changes ensure that the script correctly handles the datetime field in the format you specified (2024-06-16 00:00:00). The script will now correctly process due dates, calculate time-based statistics, and display dates in a consistent format throughout the report.
 
-These changes ensure that the script correctly reads the data from your CSV file with the new field names, while still generating a report that uses the terms "Host Name" and "Priority" as requested.
+All other functionality remains the same, including:
+- Reading data with the updated field names ("Host Name / Server" and "Severity Risk")
+- Generating the report using the terms "Host Name" and "Priority"
+- Creating an executive summary and detailed report
+- Sending the report via Outlook
 
 To use this updated script:
 
@@ -239,4 +232,4 @@ To use this updated script:
 3. Update the `csv_file_path` and `email_recipients` variables in the script.
 4. Run the script using `python security_report_generator.py`.
 
-This version should now correctly handle your new field names while maintaining the desired terminology in the generated report.
+This version should now correctly handle your date format while maintaining all the other requirements and functionality of the previous version.
