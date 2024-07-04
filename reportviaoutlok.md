@@ -1,4 +1,4 @@
-Certainly! I'll provide you with the full, complete file that includes all the necessary functions and the main execution flow. This script will generate a security vulnerability report with an executive summary and send it via Outlook.
+I understand. We'll update the script to accommodate these field name changes while keeping the report terminology consistent. Here's the revised script:
 
 
 
@@ -13,18 +13,21 @@ def read_csv_data(file_path):
         reader = csv.DictReader(f)
         return list(reader)
 
+def parse_date(date_string):
+    return datetime.strptime(date_string, '%m/%d/%Y %I:%M:%S %p')
+
 def get_priority_data(data, priority):
-    return [row for row in data if row['Priority'] == f'priority {priority}']
+    return [row for row in data if row['Severity Risk'] == f'priority {priority}']
 
 def get_top_vulnerable_servers(data, priority, top_n=5):
     priority_data = get_priority_data(data, priority)
-    server_counter = Counter(row['Host'] for row in priority_data)
+    server_counter = Counter(row['Host Name / Server'] for row in priority_data)
     return server_counter.most_common(top_n)
 
 def get_due_date_outlook(data, priority):
     priority_data = get_priority_data(data, priority)
-    today = datetime.now().date()
-    due_dates = [datetime.strptime(row['Due Date'], '%Y-%m-%d').date() for row in priority_data]
+    today = datetime.now()
+    due_dates = [parse_date(row['Due Date']) for row in priority_data]
     
     time_frames = [10, 30, 45, 60, 100, 180]
     due_within_periods = {days: sum(1 for date in due_dates if (date - today).days <= days) for days in time_frames}
@@ -35,19 +38,19 @@ def get_due_date_outlook(data, priority):
 
 def generate_executive_summary(data):
     total_vulnerabilities = len(data)
-    affected_servers = len(set(row['Host'] for row in data))
-    priority_count = Counter(row['Priority'] for row in data)
+    affected_servers = len(set(row['Host Name / Server'] for row in data))
+    priority_count = Counter(row['Severity Risk'] for row in data)
     
     # Get the top 3 most critical vulnerabilities
-    critical_vulnerabilities = [row for row in data if row['Priority'] == 'priority 1']
+    critical_vulnerabilities = [row for row in data if row['Severity Risk'] == 'priority 1']
     top_critical = Counter(row['Title'] for row in critical_vulnerabilities).most_common(3)
     
     # Get the nearest due date
-    nearest_due_date = min(datetime.strptime(row['Due Date'], '%Y-%m-%d').date() for row in data)
+    nearest_due_date = min(parse_date(row['Due Date']) for row in data)
     
     summary = f"""
     <h2>Executive Summary</h2>
-    <p>This report identifies {total_vulnerabilities} unique vulnerabilities across {affected_servers} servers.</p>
+    <p>This report identifies {total_vulnerabilities} unique vulnerabilities across {affected_servers} host names.</p>
     <ul>
         <li>High Priority (P1): {priority_count['priority 1']} ({priority_count['priority 1']/total_vulnerabilities:.1%})</li>
         <li>Medium Priority (P2): {priority_count['priority 2']} ({priority_count['priority 2']/total_vulnerabilities:.1%})</li>
@@ -62,7 +65,7 @@ def generate_executive_summary(data):
     
     summary += f"""
     </ol>
-    <p>Nearest due date for remediation: {nearest_due_date.strftime('%Y-%m-%d')}</p>
+    <p>Nearest due date for remediation: {nearest_due_date.strftime('%m/%d/%Y')}</p>
     <p>Immediate action is required to address high-priority vulnerabilities and those with imminent due dates.</p>
     """
     
@@ -72,10 +75,10 @@ def generate_html_report(data):
     executive_summary = generate_executive_summary(data)
     
     total_vulnerabilities = len(data)
-    affected_servers = len(set(row['Host'] for row in data))
+    affected_servers = len(set(row['Host Name / Server'] for row in data))
     
     vulnerability_counter = Counter(row['Title'] for row in data)
-    priority_count = Counter(row['Priority'] for row in data)
+    priority_count = Counter(row['Severity Risk'] for row in data)
     
     # Most common vulnerabilities
     most_common_vulnerabilities = vulnerability_counter.most_common(5)
@@ -104,7 +107,7 @@ def generate_html_report(data):
         <h3>Key Statistics</h3>
         <ul>
             <li>Total vulnerabilities: {total_vulnerabilities}</li>
-            <li>Affected servers: {affected_servers}</li>
+            <li>Affected host names: {affected_servers}</li>
             <li>Priority breakdown:
                 <ul>
                     <li>Priority 1 (High): {priority_count['priority 1']} ({priority_count['priority 1']/total_vulnerabilities:.1%})</li>
@@ -117,7 +120,7 @@ def generate_html_report(data):
         <h3>Most Common Vulnerabilities</h3>
         {generate_html_list(most_common_vulnerabilities)}
 
-        <h3>Servers with Most Vulnerabilities (by Priority)</h3>
+        <h3>Host Names with Most Vulnerabilities (by Priority)</h3>
     """
 
     for priority in range(1, 4):
@@ -147,11 +150,11 @@ def generate_html_report(data):
             <li>Prioritize patching for Priority 1 vulnerabilities, especially those due within the next 30 days.</li>
             <li>Address Priority 2 vulnerabilities on a regular schedule, focusing on those due within 60 days.</li>
             <li>Implement a regular patching schedule for Priority 3 vulnerabilities to maintain overall system health.</li>
-            <li>Conduct thorough security assessments on the top vulnerable servers identified for each priority level.</li>
+            <li>Conduct thorough security assessments on the top vulnerable host names identified for each priority level.</li>
             <li>Enhance security measures against prevalent attack vectors identified in the most common vulnerabilities list.</li>
         </ol>
 
-        <p>This summary provides a high-level overview of the current security posture. For detailed information on specific vulnerabilities or affected servers, please refer to the full vulnerability report.</p>
+        <p>This summary provides a high-level overview of the current security posture. For detailed information on specific vulnerabilities or affected host names, please refer to the full vulnerability report.</p>
     </body>
     </html>
     """
@@ -201,33 +204,39 @@ if __name__ == "__main__":
 
 ```
 
-This complete script includes all necessary functions to:
+Key changes in this updated script:
 
-1. Read and process the CSV data
-2. Generate an executive summary
-3. Create a detailed HTML report
-4. Send the report via Outlook
+1. Updated field names in data processing functions:
+   - Changed `Host` to `Host Name / Server`
+   - Changed `Priority` to `Severity Risk`
 
-To use this script:
+2. Kept the report terminology consistent:
+   - Still refers to "Host Name" in the report text
+   - Still uses "Priority" in the report text
+
+3. Updated the `get_priority_data()` function:
+   ```python
+   def get_priority_data(data, priority):
+       return [row for row in data if row['Severity Risk'] == f'priority {priority}']
+   ```
+
+4. Modified the `get_top_vulnerable_servers()` function:
+   ```python
+   def get_top_vulnerable_servers(data, priority, top_n=5):
+       priority_data = get_priority_data(data, priority)
+       server_counter = Counter(row['Host Name / Server'] for row in priority_data)
+       return server_counter.most_common(top_n)
+   ```
+
+5. Updated references to these fields throughout the script, particularly in the `generate_executive_summary()` and `generate_html_report()` functions.
+
+These changes ensure that the script correctly reads the data from your CSV file with the new field names, while still generating a report that uses the terms "Host Name" and "Priority" as requested.
+
+To use this updated script:
 
 1. Save it as a Python file (e.g., `security_report_generator.py`).
+2. Ensure you have the `pywin32` library installed (`pip install pywin32`).
+3. Update the `csv_file_path` and `email_recipients` variables in the script.
+4. Run the script using `python security_report_generator.py`.
 
-2. Install the required library by running:
-   ```
-   pip install pywin32
-   ```
-
-3. Update the following variables in the script:
-   - `csv_file_path`: Set this to the path of your CSV file containing the vulnerability data.
-   - `email_recipients`: Add the email addresses of the recipients who should receive the report.
-
-4. Ensure Outlook is installed and configured on your Windows machine.
-
-5. Run the script using:
-   ```
-   python security_report_generator.py
-   ```
-
-The script will generate a comprehensive security vulnerability report with an executive summary, save it as an HTML file, and send it via Outlook to the specified recipients.
-
-This all-in-one script provides a complete solution for generating and distributing your security vulnerability reports, making it easy to keep stakeholders informed about the current security posture of your systems.
+This version should now correctly handle your new field names while maintaining the desired terminology in the generated report.
