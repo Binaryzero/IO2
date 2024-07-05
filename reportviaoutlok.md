@@ -1,8 +1,183 @@
-You're absolutely right, and I apologize for the oversight. Let's make these corrections. We'll remove the recommendations and adjust the reporting to show both total and unique vulnerabilities. Here are the updated files:
+Thank you for providing these updates. I'll modify the script to incorporate these changes. Let's update the script to include the new Application ID column, adjust the Severity Risk (now Priority) format, and modify the executive summary and breakdowns as requested.
 
 
 
-First, let's update the HTML template:
+Here's the updated script:
+
+```python
+import csv
+from collections import Counter
+from datetime import datetime, timedelta
+import win32com.client
+
+def read_csv_data(file_path):
+    with open(file_path, 'r') as f:
+        reader = csv.DictReader(f)
+        return list(reader)
+
+def parse_date(date_string):
+    return datetime.strptime(date_string, '%Y-%m-%d %H:%M:%S')
+
+def get_priority_data(data, priority):
+    return [row for row in data if row['Priority'] == f'Priority {priority}']
+
+def get_top_vulnerable_servers(data, priority, top_n=5):
+    priority_data = get_priority_data(data, priority)
+    server_counter = Counter(row['Host Name / Server'] for row in priority_data)
+    return server_counter.most_common(top_n)
+
+def get_due_date_outlook(data, priority):
+    priority_data = get_priority_data(data, priority)
+    today = datetime.now()
+    due_dates = [parse_date(row['Due Date']) for row in priority_data]
+    
+    time_frames = [10, 30, 45, 60, 100, 180]
+    due_within_periods = {days: sum(1 for date in due_dates if (date - today).days <= days) for days in time_frames}
+    
+    total_vulnerabilities = len(priority_data)
+    return {days: (count, count/total_vulnerabilities if total_vulnerabilities else 0) 
+            for days, count in due_within_periods.items()}
+
+def generate_executive_summary(data):
+    total_vulnerabilities = len(data)
+    unique_vulnerabilities = len(set((row['Title'], row['Priority']) for row in data))
+    affected_servers = len(set(row['Host Name / Server'] for row in data))
+    priority_count = Counter(row['Priority'] for row in data)
+    app_id_count = Counter(row['Application ID'] for row in data)
+    
+    top_app_ids = app_id_count.most_common(5)
+    
+    nearest_due_date = min(parse_date(row['Due Date']) for row in data)
+    
+    summary = f"""
+    <h2>Executive Summary</h2>
+    <p>This report covers {total_vulnerabilities} total vulnerabilities, including {unique_vulnerabilities} unique vulnerabilities across {affected_servers} host names.</p>
+    <ul>
+        <li>High Priority (P1): {priority_count['Priority 1']} ({priority_count['Priority 1']/total_vulnerabilities:.1%})</li>
+        <li>Medium Priority (P2): {priority_count['Priority 2']} ({priority_count['Priority 2']/total_vulnerabilities:.1%})</li>
+        <li>Low Priority (P3): {priority_count['Priority 3']} ({priority_count['Priority 3']/total_vulnerabilities:.1%})</li>
+    </ul>
+    <p>Top 5 Application IDs by vulnerability count:</p>
+    <ol>
+    """
+    
+    for app_id, count in top_app_ids:
+        summary += f"<li>Application ID {app_id}: {count} vulnerabilities</li>"
+    
+    summary += f"""
+    </ol>
+    <p>Nearest due date for remediation: {nearest_due_date.strftime('%Y-%m-%d')}</p>
+    <p>Immediate action is required to address high-priority vulnerabilities and those with imminent due dates.</p>
+    """
+    
+    return summary
+
+def generate_html_list(items):
+    return "<ol>" + "".join(f"<li>{item[0]}: {item[1]} instances</li>" for item in items) + "</ol>"
+
+def generate_html_report(data):
+    with open('report_template.html', 'r') as f:
+        template = f.read()
+    
+    with open('report_styles.css', 'r') as f:
+        styles = f.read()
+    
+    total_vulnerabilities = len(data)
+    unique_vulnerabilities = len(set((row['Title'], row['Priority']) for row in data))
+    affected_servers = len(set(row['Host Name / Server'] for row in data))
+    priority_count = Counter(row['Priority'] for row in data)
+    app_id_count = Counter(row['Application ID'] for row in data)
+    
+    vulnerability_counter = Counter(row['Title'] for row in data)
+    most_common_vulnerabilities = generate_html_list(vulnerability_counter.most_common(5))
+    
+    vulnerable_servers_by_priority = ""
+    due_dates_by_priority = ""
+    for priority in range(1, 4):
+        top_servers = get_top_vulnerable_servers(data, priority)
+        vulnerable_servers_by_priority += f"<h4>Priority {priority}</h4>"
+        if top_servers:
+            vulnerable_servers_by_priority += generate_html_list(top_servers)
+        else:
+            vulnerable_servers_by_priority += "<p>No vulnerabilities found for this priority.</p>"
+        
+        due_date_outlook = get_due_date_outlook(data, priority)
+        due_dates_by_priority += f"<h4>Priority {priority}</h4>"
+        if sum(count for count, _ in due_date_outlook.values()) > 0:
+            due_dates_by_priority += "<table><tr><th>Outlook</th><th>Vulnerabilities</th><th>Percentage</th></tr>"
+            for days, (count, percentage) in due_date_outlook.items():
+                due_dates_by_priority += f"<tr><td>{days}-day outlook</td><td>{count}</td><td>{percentage:.1%}</td></tr>"
+            due_dates_by_priority += "</table>"
+        else:
+            due_dates_by_priority += "<p>No vulnerabilities found for this priority.</p>"
+    
+    vulnerabilities_by_app_id = ""
+    for app_id, count in app_id_count.most_common():
+        vulnerabilities_by_app_id += f"<h4>Application ID: {app_id}</h4>"
+        vulnerabilities_by_app_id += f"<p>Total vulnerabilities: {count}</p>"
+        app_data = [row for row in data if row['Application ID'] == app_id]
+        app_priority_count = Counter(row['Priority'] for row in app_data)
+        vulnerabilities_by_app_id += "<ul>"
+        for priority in ['Priority 1', 'Priority 2', 'Priority 3']:
+            vulnerabilities_by_app_id += f"<li>{priority}: {app_priority_count[priority]}</li>"
+        vulnerabilities_by_app_id += "</ul>"
+    
+    return template.format(
+        styles=styles,
+        executive_summary=generate_executive_summary(data),
+        total_vulnerabilities=total_vulnerabilities,
+        unique_vulnerabilities=unique_vulnerabilities,
+        affected_servers=affected_servers,
+        priority_1_count=priority_count['Priority 1'],
+        priority_1_percentage=priority_count['Priority 1']/total_vulnerabilities,
+        priority_2_count=priority_count['Priority 2'],
+        priority_2_percentage=priority_count['Priority 2']/total_vulnerabilities,
+        priority_3_count=priority_count['Priority 3'],
+        priority_3_percentage=priority_count['Priority 3']/total_vulnerabilities,
+        most_common_vulnerabilities=most_common_vulnerabilities,
+        vulnerable_servers_by_priority=vulnerable_servers_by_priority,
+        due_dates_by_priority=due_dates_by_priority,
+        vulnerabilities_by_app_id=vulnerabilities_by_app_id
+    )
+
+def send_outlook_email(subject, body, recipients):
+    outlook = win32com.client.Dispatch("Outlook.Application").GetNamespace("MAPI")
+    message = outlook.Application.CreateItem(0)
+    message.Subject = subject
+    message.HTMLBody = body
+    
+    if isinstance(recipients, str):
+        recipients = [recipients]
+    
+    for recipient in recipients:
+        message.Recipients.Add(recipient)
+    
+    message.Send()
+    print(f"Email sent to: {', '.join(recipients)}")
+
+if __name__ == "__main__":
+    csv_file_path = 'path_to_your_csv_file.csv'
+    email_recipients = ['recipient1@example.com', 'recipient2@example.com']
+    email_subject = 'Security Vulnerability Summary Report'
+
+    data = read_csv_data(csv_file_path)
+    report_html = generate_html_report(data)
+    
+    with open('security_report.html', 'w') as f:
+        f.write(report_html)
+    
+    try:
+        send_outlook_email(email_subject, report_html, email_recipients)
+        print("Report sent successfully via Outlook!")
+    except Exception as e:
+        print(f"An error occurred while sending the email: {str(e)}")
+        print("The report has been saved as 'security_report.html' in the current directory.")
+
+    print("Process completed.")
+
+```
+
+Now, let's update the HTML template to include the new Application ID breakdown:
 
 ```html
 <!DOCTYPE html>
@@ -47,187 +222,22 @@ First, let's update the HTML template:
     <h3>Upcoming Due Dates (by Priority)</h3>
     {due_dates_by_priority}
 
+    <h3>Vulnerabilities by Application ID</h3>
+    {vulnerabilities_by_app_id}
+
     <p>This summary provides a high-level overview of the current security posture. For detailed information on specific vulnerabilities or affected host names, please refer to the full vulnerability report.</p>
 </body>
 </html>
 
 ```
 
-Now, let's update the main script to calculate both total and unique vulnerabilities, and remove the recommendations:
+Key changes in this update:
 
-```python
-import csv
-from collections import Counter
-from datetime import datetime, timedelta
-import win32com.client
-
-def read_csv_data(file_path):
-    with open(file_path, 'r') as f:
-        reader = csv.DictReader(f)
-        return list(reader)
-
-def parse_date(date_string):
-    return datetime.strptime(date_string, '%Y-%m-%d %H:%M:%S')
-
-def get_priority_data(data, priority):
-    return [row for row in data if row['Severity Risk'] == f'priority {priority}']
-
-def get_top_vulnerable_servers(data, priority, top_n=5):
-    priority_data = get_priority_data(data, priority)
-    server_counter = Counter(row['Host Name / Server'] for row in priority_data)
-    return server_counter.most_common(top_n)
-
-def get_due_date_outlook(data, priority):
-    priority_data = get_priority_data(data, priority)
-    today = datetime.now()
-    due_dates = [parse_date(row['Due Date']) for row in priority_data]
-    
-    time_frames = [10, 30, 45, 60, 100, 180]
-    due_within_periods = {days: sum(1 for date in due_dates if (date - today).days <= days) for days in time_frames}
-    
-    total_vulnerabilities = len(priority_data)
-    return {days: (count, count/total_vulnerabilities if total_vulnerabilities else 0) 
-            for days, count in due_within_periods.items()}
-
-def generate_executive_summary(data):
-    total_vulnerabilities = len(data)
-    unique_vulnerabilities = len(set((row['Title'], row['Severity Risk']) for row in data))
-    affected_servers = len(set(row['Host Name / Server'] for row in data))
-    priority_count = Counter(row['Severity Risk'] for row in data)
-    
-    critical_vulnerabilities = [row for row in data if row['Severity Risk'] == 'priority 1']
-    top_critical = Counter(row['Title'] for row in critical_vulnerabilities).most_common(3)
-    
-    nearest_due_date = min(parse_date(row['Due Date']) for row in data)
-    
-    summary = f"""
-    <h2>Executive Summary</h2>
-    <p>This report covers {total_vulnerabilities} total vulnerabilities, including {unique_vulnerabilities} unique vulnerabilities across {affected_servers} host names.</p>
-    <ul>
-        <li>High Priority (P1): {priority_count['priority 1']} ({priority_count['priority 1']/total_vulnerabilities:.1%})</li>
-        <li>Medium Priority (P2): {priority_count['priority 2']} ({priority_count['priority 2']/total_vulnerabilities:.1%})</li>
-        <li>Low Priority (P3): {priority_count['priority 3']} ({priority_count['priority 3']/total_vulnerabilities:.1%})</li>
-    </ul>
-    <p>Top 3 critical vulnerabilities:</p>
-    <ol>
-    """
-    
-    for vuln, count in top_critical:
-        summary += f"<li>{vuln} ({count} instances)</li>"
-    
-    summary += f"""
-    </ol>
-    <p>Nearest due date for remediation: {nearest_due_date.strftime('%Y-%m-%d')}</p>
-    <p>Immediate action is required to address high-priority vulnerabilities and those with imminent due dates.</p>
-    """
-    
-    return summary
-
-def generate_html_list(items):
-    return "<ol>" + "".join(f"<li>{item[0]}: {item[1]} instances</li>" for item in items) + "</ol>"
-
-def generate_html_report(data):
-    with open('report_template.html', 'r') as f:
-        template = f.read()
-    
-    with open('report_styles.css', 'r') as f:
-        styles = f.read()
-    
-    total_vulnerabilities = len(data)
-    unique_vulnerabilities = len(set((row['Title'], row['Severity Risk']) for row in data))
-    affected_servers = len(set(row['Host Name / Server'] for row in data))
-    priority_count = Counter(row['Severity Risk'] for row in data)
-    
-    vulnerability_counter = Counter(row['Title'] for row in data)
-    most_common_vulnerabilities = generate_html_list(vulnerability_counter.most_common(5))
-    
-    vulnerable_servers_by_priority = ""
-    due_dates_by_priority = ""
-    for priority in range(1, 4):
-        top_servers = get_top_vulnerable_servers(data, priority)
-        vulnerable_servers_by_priority += f"<h4>Priority {priority}</h4>"
-        if top_servers:
-            vulnerable_servers_by_priority += generate_html_list(top_servers)
-        else:
-            vulnerable_servers_by_priority += "<p>No vulnerabilities found for this priority.</p>"
-        
-        due_date_outlook = get_due_date_outlook(data, priority)
-        due_dates_by_priority += f"<h4>Priority {priority}</h4>"
-        if sum(count for count, _ in due_date_outlook.values()) > 0:
-            due_dates_by_priority += "<table><tr><th>Outlook</th><th>Vulnerabilities</th><th>Percentage</th></tr>"
-            for days, (count, percentage) in due_date_outlook.items():
-                due_dates_by_priority += f"<tr><td>{days}-day outlook</td><td>{count}</td><td>{percentage:.1%}</td></tr>"
-            due_dates_by_priority += "</table>"
-        else:
-            due_dates_by_priority += "<p>No vulnerabilities found for this priority.</p>"
-    
-    return template.format(
-        styles=styles,
-        executive_summary=generate_executive_summary(data),
-        total_vulnerabilities=total_vulnerabilities,
-        unique_vulnerabilities=unique_vulnerabilities,
-        affected_servers=affected_servers,
-        priority_1_count=priority_count['priority 1'],
-        priority_1_percentage=priority_count['priority 1']/total_vulnerabilities,
-        priority_2_count=priority_count['priority 2'],
-        priority_2_percentage=priority_count['priority 2']/total_vulnerabilities,
-        priority_3_count=priority_count['priority 3'],
-        priority_3_percentage=priority_count['priority 3']/total_vulnerabilities,
-        most_common_vulnerabilities=most_common_vulnerabilities,
-        vulnerable_servers_by_priority=vulnerable_servers_by_priority,
-        due_dates_by_priority=due_dates_by_priority
-    )
-
-def send_outlook_email(subject, body, recipients):
-    outlook = win32com.client.Dispatch("Outlook.Application").GetNamespace("MAPI")
-    message = outlook.Application.CreateItem(0)
-    message.Subject = subject
-    message.HTMLBody = body
-    
-    if isinstance(recipients, str):
-        recipients = [recipients]
-    
-    for recipient in recipients:
-        message.Recipients.Add(recipient)
-    
-    message.Send()
-    print(f"Email sent to: {', '.join(recipients)}")
-
-if __name__ == "__main__":
-    csv_file_path = 'path_to_your_csv_file.csv'
-    email_recipients = ['recipient1@example.com', 'recipient2@example.com']
-    email_subject = 'Security Vulnerability Summary Report'
-
-    data = read_csv_data(csv_file_path)
-    report_html = generate_html_report(data)
-    
-    with open('security_report.html', 'w') as f:
-        f.write(report_html)
-    
-    try:
-        send_outlook_email(email_subject, report_html, email_recipients)
-        print("Report sent successfully via Outlook!")
-    except Exception as e:
-        print(f"An error occurred while sending the email: {str(e)}")
-        print("The report has been saved as 'security_report.html' in the current directory.")
-
-    print("Process completed.")
-
-```
-
-Key changes:
-
-1. Removed the "Recommendations" section from the HTML template.
-2. Updated the executive summary to report both total and unique vulnerabilities:
-   ```python
-   total_vulnerabilities = len(data)
-   unique_vulnerabilities = len(set((row['Title'], row['Severity Risk']) for row in data))
-   ```
-3. Modified the executive summary text to reflect these changes:
-   ```python
-   <p>This report covers {total_vulnerabilities} total vulnerabilities, including {unique_vulnerabilities} unique vulnerabilities across {affected_servers} host names.</p>
-   ```
-4. Updated the Key Statistics section in the HTML template to include both total and unique vulnerabilities.
+1. Added support for the new Application ID column.
+2. Updated references from 'Severity Risk' to 'Priority' and adjusted the format (e.g., 'Priority 1' instead of 'priority 1').
+3. Modified the executive summary to show top 5 vulnerabilities by Application ID instead of top critical vulnerabilities.
+4. Added a breakdown of vulnerabilities by Application ID throughout the report.
+5. Updated all relevant functions to use the new Priority format.
 
 To use this updated version:
 
@@ -236,4 +246,4 @@ To use this updated version:
 3. Ensure the `report_styles.css` file is in the same directory as your script.
 4. Run the script as before.
 
-These changes will now accurately report both total and unique vulnerabilities, and the recommendations section has been removed as requested. The report will provide a clearer picture of the vulnerability landscape across your systems.
+These changes will now incorporate the new Application ID column, use the correct Priority format, and provide breakdowns by both Priority and Application ID throughout the report. The executive summary now includes the top 5 Application IDs by vulnerability count instead of the top critical vulnerabilities.
