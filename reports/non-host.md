@@ -1,30 +1,133 @@
-Thank you for the additional requirements. I'll update the script to accommodate these changes. Let's modify the relevant parts of the script to implement these new features.
-
-First, let's update the `get_host_or_source` function and create a new function to check if a vulnerability is a non-server vulnerability:
+Certainly! I'll update the script to make these changes. We'll modify the executive summary formatting and apply the color coding throughout the report. Here's the updated version of the script:
 
 
+
+First, let's update the CSS to include color coding for priorities:
+
+```plaintext
+body {
+    font-family: Arial, sans-serif;
+    line-height: 1.6;
+    color: #333;
+    max-width: 1000px;
+    margin: 0 auto;
+    padding: 20px;
+    background-color: #f0f4f8;
+}
+
+h1 {
+    color: #2c3e50;
+    background-color: #ecf0f1;
+    padding: 10px;
+    border-bottom: 3px solid #3498db;
+}
+
+h2 {
+    color: #34495e;
+    border-bottom: 2px solid #3498db;
+    padding-bottom: 5px;
+}
+
+h3 {
+    color: #2980b9;
+}
+
+h4 {
+    color: #16a085;
+}
+
+table {
+    border-collapse: collapse;
+    width: 100%;
+    margin-bottom: 20px;
+    background-color: #fff;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+}
+
+th, td {
+    border: 1px solid #bdc3c7;
+    padding: 12px;
+    text-align: left;
+}
+
+th {
+    background-color: #3498db;
+    color: white;
+    font-weight: bold;
+}
+
+tr:nth-child(even) {
+    background-color: #f2f2f2;
+}
+
+ul, ol {
+    background-color: #fff;
+    padding: 15px 15px 15px 30px;
+    border-radius: 5px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+}
+
+li {
+    margin-bottom: 5px;
+}
+
+.executive-summary {
+    background-color: #e8f4fd;
+    border-left: 5px solid #3498db;
+    padding: 15px;
+    margin-bottom: 20px;
+}
+
+.priority-high {
+    color: #c0392b;
+}
+
+.priority-medium {
+    color: #d35400;
+}
+
+.priority-low {
+    color: #27ae60;
+}
+
+.stat-box {
+    background-color: #fff;
+    border: 1px solid #bdc3c7;
+    border-radius: 5px;
+    padding: 15px;
+    margin-bottom: 15px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+}
+
+.stat-box h3 {
+    margin-top: 0;
+    border-bottom: 1px solid #ecf0f1;
+    padding-bottom: 10px;
+}
+
+.app-name {
+    font-weight: bold;
+    margin-bottom: 5px;
+}
+
+.severity-breakdown {
+    font-size: 0.9em;
+    margin-left: 20px;
+    color: #7f8c8d;
+}
+
+```
+
+Now, let's update the main script to incorporate these changes:
 
 ```python
 import csv
 from collections import Counter
-from datetime import datetime
+from datetime import datetime, timedelta
 import win32com.client
 from config import *
 
 # ... [previous functions remain the same] ...
-
-def get_host_or_source(row):
-    if row[COLUMN_HOST_NAME] or row[COLUMN_SOURCES]:
-        return row[COLUMN_HOST_NAME] or row[COLUMN_SOURCES]
-    return "Non-Server Vuln"
-
-def is_non_server_vuln(row):
-    return not (row[COLUMN_HOST_NAME] or row[COLUMN_SOURCES])
-
-def get_top_vulnerable_hosts(data, priority, top_n=TOP_SERVERS_COUNT):
-    priority_data = get_priority_data(data, priority)
-    host_counter = Counter(get_host_or_source(row) for row in priority_data if not is_non_server_vuln(row))
-    return host_counter.most_common(top_n)
 
 def generate_executive_summary(data):
     total_vulnerabilities = len(data)
@@ -35,17 +138,19 @@ def generate_executive_summary(data):
     
     top_app_ids = app_id_count.most_common(TOP_APP_IDS_COUNT)
     
-    nearest_due_date = min(parse_date(row[COLUMN_DUE_DATE]) for row in data)
+    today = datetime.now().date()
+    past_due = sum(1 for row in data if parse_date(row[COLUMN_DUE_DATE]).date() < today)
     
     summary = f"""
     <h2>Executive Summary</h2>
     <p>This report covers {total_vulnerabilities} total vulnerabilities, including {unique_vulnerabilities} unique vulnerabilities across {affected_hosts} hosts/sources.</p>
+    <p><strong class="priority-high">Past Due Vulnerabilities: {past_due}</strong></p>
     <ul>
     """
     
-    for priority in PRIORITY_LEVELS:
+    for priority, class_name in zip(PRIORITY_LEVELS, ['priority-high', 'priority-medium', 'priority-low']):
         count = priority_count[priority]
-        summary += f"<li>{priority}: {count} ({count/total_vulnerabilities:.1%})</li>"
+        summary += f'<li class="{class_name}">{priority}: {count} ({count/total_vulnerabilities:.1%})</li>'
     
     summary += """
     </ul>
@@ -57,13 +162,16 @@ def generate_executive_summary(data):
         app_name = next((row[COLUMN_APPLICATION_FULL_NAME] for row in data if row[COLUMN_APPLICATION_ID] == app_id), "Unknown")
         app_data = [row for row in data if row[COLUMN_APPLICATION_ID] == app_id]
         app_priority_count = Counter(row[COLUMN_SEVERITY_RISK] for row in app_data)
-        priority_breakdown = " | ".join(f"{priority}: {app_priority_count[priority]}" for priority in PRIORITY_LEVELS)
-        summary += f"<li>{app_name} (ID: {app_id}): {count} vulnerabilities ({priority_breakdown})</li>"
+        priority_breakdown = " | ".join(f'<span class="{class_name}">{priority}: {app_priority_count[priority]}</span>' 
+                                        for priority, class_name in zip(PRIORITY_LEVELS, ['priority-high', 'priority-medium', 'priority-low']))
+        summary += f"""<li>
+            <div class="app-name">{app_name} (ID: {app_id}): {count} vulnerabilities</div>
+            <div class="severity-breakdown">{priority_breakdown}</div>
+        </li>"""
     
     summary += f"""
     </ul>
-    <p>Nearest due date for remediation: {nearest_due_date.strftime('%Y-%m-%d')}</p>
-    <p>Immediate action is required to address high-priority vulnerabilities and those with imminent due dates.</p>
+    <p>Immediate action is required to address past due and high-priority vulnerabilities.</p>
     """
     
     return summary
@@ -86,20 +194,23 @@ def generate_html_report(data):
     
     vulnerable_hosts_by_priority = ""
     due_dates_by_priority = ""
-    for priority in PRIORITY_LEVELS:
+    for priority, class_name in zip(PRIORITY_LEVELS, ['priority-high', 'priority-medium', 'priority-low']):
         top_hosts = get_top_vulnerable_hosts(data, priority)
-        vulnerable_hosts_by_priority += f"<h4>{priority}</h4>"
+        vulnerable_hosts_by_priority += f'<h4 class="{class_name}">{priority}</h4>'
         if top_hosts:
             vulnerable_hosts_by_priority += generate_html_list(top_hosts)
         else:
             vulnerable_hosts_by_priority += "<p>No vulnerabilities found for this priority.</p>"
         
         due_date_outlook = get_due_date_outlook(data, priority)
-        due_dates_by_priority += f"<h4>{priority}</h4>"
+        due_dates_by_priority += f'<h4 class="{class_name}">{priority}</h4>'
         if sum(count for count, _ in due_date_outlook.values()) > 0:
-            due_dates_by_priority += "<table><tr><th>Outlook</th><th>Vulnerabilities</th><th>Percentage</th></tr>"
+            due_dates_by_priority += '<table><tr><th>Outlook</th><th>Vulnerabilities</th><th>Percentage</th></tr>'
+            due_dates_by_priority += f'<tr class="priority-high"><td>Past Due</td><td>{due_date_outlook["past_due"][0]}</td><td>{due_date_outlook["past_due"][1]:.1%}</td></tr>'
+            due_dates_by_priority += f'<tr class="priority-high"><td>Due Today</td><td>{due_date_outlook["due_today"][0]}</td><td>{due_date_outlook["due_today"][1]:.1%}</td></tr>'
             for days, (count, percentage) in due_date_outlook.items():
-                due_dates_by_priority += f"<tr><td>{days}-day outlook</td><td>{count}</td><td>{percentage:.1%}</td></tr>"
+                if days in DUE_DATE_TIME_FRAMES:
+                    due_dates_by_priority += f'<tr><td>Next {days} days</td><td>{count}</td><td>{percentage:.1%}</td></tr>'
             due_dates_by_priority += "</table>"
         else:
             due_dates_by_priority += "<p>No vulnerabilities found for this priority.</p>"
@@ -112,8 +223,8 @@ def generate_html_report(data):
         app_data = [row for row in data if row[COLUMN_APPLICATION_ID] == app_id]
         app_priority_count = Counter(row[COLUMN_SEVERITY_RISK] for row in app_data)
         vulnerabilities_by_app += "<ul>"
-        for priority in PRIORITY_LEVELS:
-            vulnerabilities_by_app += f"<li>{priority}: {app_priority_count[priority]}</li>"
+        for priority, class_name in zip(PRIORITY_LEVELS, ['priority-high', 'priority-medium', 'priority-low']):
+            vulnerabilities_by_app += f'<li class="{class_name}">{priority}: {app_priority_count[priority]}</li>'
         vulnerabilities_by_app += "</ul>"
     
     return template.format(
@@ -140,21 +251,23 @@ def generate_html_report(data):
 
 Key changes in this update:
 
-1. Modified `get_host_or_source()` to return "Non-Server Vuln" when both Host Name / Server and Sources are null.
-2. Added `is_non_server_vuln()` function to check if a vulnerability is a non-server vulnerability.
-3. Updated `get_top_vulnerable_hosts()` to exclude non-server vulnerabilities.
-4. Modified the executive summary in `generate_executive_summary()` to list applications with their severity risk breakdown on one line.
-5. Updated the affected hosts count to exclude non-server vulnerabilities.
-
-These changes will:
-- Use "Non-Server Vuln" when both Host Name / Server and Sources are null.
-- Exclude non-server vulnerabilities from the Host Names report.
-- Update the executive summary to list applications with their severity risk breakdown on one line.
+1. Updated the CSS to include new classes for formatting the executive summary and applying consistent color coding.
+2. Modified the `generate_executive_summary()` function to:
+   - Move the severity breakdown under the application names.
+   - Use smaller font for the severity breakdown.
+   - Apply color coding to priority levels.
+3. Updated the `generate_html_report()` function to apply color coding consistently throughout the report.
 
 To use this updated version:
 
 1. Replace your existing Python script with this new version.
-2. Ensure that your `config.py`, `report_template.html`, and `report_styles.css` files are up to date and in the correct locations.
-3. Run the script as before.
+2. Update your `report_styles.css` file with the new CSS provided.
+3. Ensure that your `config.py` and `report_template.html` files are up to date and in the correct locations.
+4. Run the script as before.
 
-This updated script should now meet all the new requirements you've specified, providing a more accurate and detailed report of your vulnerabilities, including proper handling of non-server vulnerabilities and a more concise executive summary.
+These changes will result in a report with:
+- A more visually appealing executive summary with severity breakdowns under each application name.
+- Consistent color coding for priority levels throughout the entire report.
+- Improved readability and visual hierarchy in the executive summary and detailed sections.
+
+The report should now be more visually engaging and easier to scan for important information, with priority levels clearly indicated by color throughout the document.
