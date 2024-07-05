@@ -1,14 +1,51 @@
-Certainly! To export the executive summary to a PowerPoint slide, we'll need to use a Python library called `python-pptx`. This library allows us to create and manipulate PowerPoint presentations programmatically. Let's add this functionality to your script.
+I apologize for these issues. Let's address both problems:
 
-First, make sure you have the `python-pptx` library installed. You can install it using pip:
+1. HTML report with unwanted \n characters
+2. TypeError in the export_to_powerpoint function
+
+First, let's fix the HTML report issue:
+
+
+
+Update the `generate_executive_summary` function to use `textwrap.dedent()` to remove extra whitespace:
+
+```python
+import textwrap
+
+def generate_executive_summary(data):
+    # ... [previous code remains the same] ...
+
+    html_summary = textwrap.dedent(f"""
+    <h2>Executive Summary</h2>
+    <p>This report covers {total_vulnerabilities} total vulnerabilities, including {unique_vulnerabilities} unique vulnerabilities across {affected_hosts} hosts/sources.</p>
+    <p><strong class="priority-high">Past Due Vulnerabilities: {past_due}</strong></p>
+    <ul>
+    """).strip()
+    
+    # ... [rest of the function remains the same] ...
+
+    html_summary += textwrap.dedent("""
+    </ul>
+    <p>Top Applications by vulnerability count:</p>
+    <ul>
+    """).strip()
+    
+    # ... [rest of the function remains the same] ...
+
+    html_summary += textwrap.dedent(f"""
+    </ul>
+    <p>Immediate action is required to address past due and high-priority vulnerabilities.</p>
+    """).strip()
+
+    return html_summary, plain_summary
 
 ```
-pip install python-pptx
-```
 
-Now, let's add a new function to create a PowerPoint slide with the executive summary:
+Now, let's address the TypeError in the `export_to_powerpoint` function:
 
 
+
+Let's modify the `export_to_powerpoint` function to handle cases where the slide might not have a title shape:
 
 ```python
 from pptx import Presentation
@@ -22,7 +59,10 @@ def export_to_powerpoint(exec_summary, output_file='executive_summary.pptx'):
     blank_slide_layout = prs.slide_layouts[6]
     slide = prs.slides.add_slide(blank_slide_layout)
 
+    # Add title to the slide
     title_shape = slide.shapes.title
+    if title_shape is None:
+        title_shape = slide.shapes.add_title()
     title_shape.text = "Security Vulnerability Report - Executive Summary"
     
     left = top = Inches(0.5)
@@ -77,118 +117,22 @@ def export_to_powerpoint(exec_summary, output_file='executive_summary.pptx'):
     prs.save(output_file)
     print(f"Executive summary exported to {output_file}")
 
-# Add this to your main function or where you generate the report
-exec_summary = generate_executive_summary(data)
-export_to_powerpoint(exec_summary)
-
 ```
 
-Now, let's modify the `generate_executive_summary` function to return a plain text version alongside the HTML version:
+These changes should resolve both issues:
 
-
-
-```python
-def generate_executive_summary(data):
-    total_vulnerabilities = len(data)
-    unique_vulnerabilities = len(set((row[COLUMN_TITLE], row[COLUMN_SEVERITY_RISK]) for row in data))
-    affected_hosts = len(set(get_host_or_source(row) for row in data if not is_non_server_vuln(row)))
-    priority_count = Counter(row[COLUMN_SEVERITY_RISK] for row in data)
-    app_id_count = Counter(row[COLUMN_APPLICATION_ID] for row in data)
-    
-    top_app_ids = app_id_count.most_common(TOP_APP_IDS_COUNT)
-    
-    today = datetime.now().date()
-    past_due = sum(1 for row in data if parse_date(row[COLUMN_DUE_DATE]).date() < today)
-    
-    html_summary = f"""
-    <h2>Executive Summary</h2>
-    <p>This report covers {total_vulnerabilities} total vulnerabilities, including {unique_vulnerabilities} unique vulnerabilities across {affected_hosts} hosts/sources.</p>
-    <p><strong class="priority-high">Past Due Vulnerabilities: {past_due}</strong></p>
-    <ul>
-    """
-    
-    plain_summary = f"""Executive Summary
-
-This report covers {total_vulnerabilities} total vulnerabilities, including {unique_vulnerabilities} unique vulnerabilities across {affected_hosts} hosts/sources.
-
-Past Due Vulnerabilities: {past_due}
-
-"""
-    
-    for priority, class_name in zip(PRIORITY_LEVELS, ['priority-high', 'priority-medium', 'priority-low']):
-        count = priority_count[priority]
-        html_summary += f'<li class="{class_name}">{priority}: {count} ({count/total_vulnerabilities:.1%})</li>'
-        plain_summary += f'{priority}: {count} ({count/total_vulnerabilities:.1%})\n'
-    
-    html_summary += """
-    </ul>
-    <p>Top Applications by vulnerability count:</p>
-    <ul>
-    """
-    
-    plain_summary += "\nTop Applications by vulnerability count:\n"
-    
-    for app_id, count in top_app_ids:
-        app_name = next((row[COLUMN_APPLICATION_FULL_NAME] for row in data if row[COLUMN_APPLICATION_ID] == app_id), "Unknown")
-        app_data = [row for row in data if row[COLUMN_APPLICATION_ID] == app_id]
-        app_priority_count = Counter(row[COLUMN_SEVERITY_RISK] for row in app_data)
-        priority_breakdown_html = " | ".join(f'<span class="{class_name}">{priority}: {app_priority_count[priority]}</span>' 
-                                        for priority, class_name in zip(PRIORITY_LEVELS, ['priority-high', 'priority-medium', 'priority-low']))
-        priority_breakdown_plain = " | ".join(f'{priority}: {app_priority_count[priority]}' for priority in PRIORITY_LEVELS)
-        
-        html_summary += f"""<li>
-            <div class="app-name">{app_name} (ID: {app_id}): {count} vulnerabilities</div>
-            <div class="severity-breakdown">{priority_breakdown_html}</div>
-        </li>"""
-        
-        plain_summary += f"{app_name} (ID: {app_id}): {count} vulnerabilities\n"
-        plain_summary += f"    {priority_breakdown_plain}\n"
-    
-    html_summary += f"""
-    </ul>
-    <p>Immediate action is required to address past due and high-priority vulnerabilities.</p>
-    """
-    
-    plain_summary += "\nImmediate action is required to address past due and high-priority vulnerabilities."
-    
-    return html_summary, plain_summary
-
-# In your main function or where you generate the report:
-html_summary, plain_summary = generate_executive_summary(data)
-export_to_powerpoint(plain_summary)
-
-```
+1. The HTML report should no longer contain unwanted \n characters.
+2. The PowerPoint export function should now handle cases where the slide doesn't have a default title shape.
 
 To implement these changes:
 
-1. Add the `export_to_powerpoint` function to your script.
-2. Replace the existing `generate_executive_summary` function with the updated version provided above.
-3. Update any parts of your script that use `generate_executive_summary` to handle both the HTML and plain text versions.
-4. In your main execution block, add a call to `export_to_powerpoint` with the plain text summary.
+1. Update the `generate_executive_summary` function in your script with the new version that uses `textwrap.dedent()`.
+2. Replace the existing `export_to_powerpoint` function with the updated version provided above.
+3. Make sure to import `textwrap` at the top of your script:
+   ```python
+   import textwrap
+   ```
 
-Here's how your main execution block might look now:
+After making these changes, run your script again. The HTML report should be cleaner, and the PowerPoint export should work without the TypeError.
 
-```python
-if __name__ == "__main__":
-    data = read_csv_data(CSV_FILE_PATH)
-    html_summary, plain_summary = generate_executive_summary(data)
-    report_html = generate_html_report(data)
-    
-    with open(OUTPUT_REPORT_PATH, 'w') as f:
-        f.write(report_html)
-    
-    export_to_powerpoint(plain_summary)
-    
-    try:
-        send_outlook_email(EMAIL_SUBJECT, report_html, EMAIL_RECIPIENTS)
-        print("Report sent successfully via Outlook!")
-    except Exception as e:
-        print(f"An error occurred while sending the email: {str(e)}")
-        print(f"The report has been saved as '{OUTPUT_REPORT_PATH}' in the current directory.")
-
-    print("Process completed.")
-```
-
-These changes will generate your HTML report as before, but will also create a PowerPoint file with the executive summary. The PowerPoint slide will contain a formatted version of the executive summary, with appropriate text sizes, colors, and layout to make it easy to read and present.
-
-Remember to have the `python-pptx` library installed for this to work. If you encounter any issues or need further customization of the PowerPoint output, please let me know.
+If you still encounter any issues, please provide more details about the specific error messages or unexpected behavior, and I'll be happy to help further.
