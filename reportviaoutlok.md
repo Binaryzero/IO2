@@ -1,6 +1,6 @@
-I apologize for the confusion. Thank you for the clarification. Let's make the necessary corrections and externalize all the settings. We'll create a separate configuration file for the settings and update the script accordingly.
+Thank you for providing that information. Let's update our script to incorporate these changes. We'll modify the configuration file and the main script to use the Application Full Name for display and Sources when Host Name / Server is null.
 
-First, let's create a configuration file:
+First, let's update the configuration file:
 
 ```python
 # config.py
@@ -26,7 +26,9 @@ DUE_DATE_TIME_FRAMES = [10, 30, 45, 60, 100, 180]
 # Column names
 COLUMN_SEVERITY_RISK = 'Severity Risk'
 COLUMN_APPLICATION_ID = 'Application ID'
+COLUMN_APPLICATION_FULL_NAME = 'Application Full Name'
 COLUMN_HOST_NAME = 'Host Name / Server'
+COLUMN_SOURCES = 'Sources'
 COLUMN_TITLE = 'Title'
 COLUMN_DUE_DATE = 'Due Date'
 
@@ -35,7 +37,7 @@ PRIORITY_LEVELS = ['Priority 1', 'Priority 2', 'Priority 3']
 
 ```
 
-Now, let's update the main script to use this configuration file and make the necessary corrections:
+Now, let's update the main script to use these new fields:
 
 ```python
 import csv
@@ -55,10 +57,13 @@ def parse_date(date_string):
 def get_priority_data(data, priority):
     return [row for row in data if row[COLUMN_SEVERITY_RISK] == priority]
 
-def get_top_vulnerable_servers(data, priority, top_n=TOP_SERVERS_COUNT):
+def get_host_or_source(row):
+    return row[COLUMN_HOST_NAME] if row[COLUMN_HOST_NAME] else row[COLUMN_SOURCES]
+
+def get_top_vulnerable_hosts(data, priority, top_n=TOP_SERVERS_COUNT):
     priority_data = get_priority_data(data, priority)
-    server_counter = Counter(row[COLUMN_HOST_NAME] for row in priority_data)
-    return server_counter.most_common(top_n)
+    host_counter = Counter(get_host_or_source(row) for row in priority_data)
+    return host_counter.most_common(top_n)
 
 def get_due_date_outlook(data, priority):
     priority_data = get_priority_data(data, priority)
@@ -74,7 +79,7 @@ def get_due_date_outlook(data, priority):
 def generate_executive_summary(data):
     total_vulnerabilities = len(data)
     unique_vulnerabilities = len(set((row[COLUMN_TITLE], row[COLUMN_SEVERITY_RISK]) for row in data))
-    affected_servers = len(set(row[COLUMN_HOST_NAME] for row in data))
+    affected_hosts = len(set(get_host_or_source(row) for row in data))
     priority_count = Counter(row[COLUMN_SEVERITY_RISK] for row in data)
     app_id_count = Counter(row[COLUMN_APPLICATION_ID] for row in data)
     
@@ -84,7 +89,7 @@ def generate_executive_summary(data):
     
     summary = f"""
     <h2>Executive Summary</h2>
-    <p>This report covers {total_vulnerabilities} total vulnerabilities, including {unique_vulnerabilities} unique vulnerabilities across {affected_servers} host names.</p>
+    <p>This report covers {total_vulnerabilities} total vulnerabilities, including {unique_vulnerabilities} unique vulnerabilities across {affected_hosts} hosts/sources.</p>
     <ul>
     """
     
@@ -94,12 +99,13 @@ def generate_executive_summary(data):
     
     summary += """
     </ul>
-    <p>Top 5 Application IDs by vulnerability count:</p>
+    <p>Top 5 Applications by vulnerability count:</p>
     <ol>
     """
     
     for app_id, count in top_app_ids:
-        summary += f"<li>Application ID {app_id}: {count} vulnerabilities</li>"
+        app_name = next((row[COLUMN_APPLICATION_FULL_NAME] for row in data if row[COLUMN_APPLICATION_ID] == app_id), "Unknown")
+        summary += f"<li>{app_name} (ID: {app_id}): {count} vulnerabilities</li>"
     
     summary += f"""
     </ol>
@@ -121,22 +127,22 @@ def generate_html_report(data):
     
     total_vulnerabilities = len(data)
     unique_vulnerabilities = len(set((row[COLUMN_TITLE], row[COLUMN_SEVERITY_RISK]) for row in data))
-    affected_servers = len(set(row[COLUMN_HOST_NAME] for row in data))
+    affected_hosts = len(set(get_host_or_source(row) for row in data))
     priority_count = Counter(row[COLUMN_SEVERITY_RISK] for row in data)
     app_id_count = Counter(row[COLUMN_APPLICATION_ID] for row in data)
     
     vulnerability_counter = Counter(row[COLUMN_TITLE] for row in data)
     most_common_vulnerabilities = generate_html_list(vulnerability_counter.most_common(TOP_VULNERABILITIES_COUNT))
     
-    vulnerable_servers_by_priority = ""
+    vulnerable_hosts_by_priority = ""
     due_dates_by_priority = ""
     for priority in PRIORITY_LEVELS:
-        top_servers = get_top_vulnerable_servers(data, priority)
-        vulnerable_servers_by_priority += f"<h4>{priority}</h4>"
-        if top_servers:
-            vulnerable_servers_by_priority += generate_html_list(top_servers)
+        top_hosts = get_top_vulnerable_hosts(data, priority)
+        vulnerable_hosts_by_priority += f"<h4>{priority}</h4>"
+        if top_hosts:
+            vulnerable_hosts_by_priority += generate_html_list(top_hosts)
         else:
-            vulnerable_servers_by_priority += "<p>No vulnerabilities found for this priority.</p>"
+            vulnerable_hosts_by_priority += "<p>No vulnerabilities found for this priority.</p>"
         
         due_date_outlook = get_due_date_outlook(data, priority)
         due_dates_by_priority += f"<h4>{priority}</h4>"
@@ -148,23 +154,24 @@ def generate_html_report(data):
         else:
             due_dates_by_priority += "<p>No vulnerabilities found for this priority.</p>"
     
-    vulnerabilities_by_app_id = ""
+    vulnerabilities_by_app = ""
     for app_id, count in app_id_count.most_common():
-        vulnerabilities_by_app_id += f"<h4>Application ID: {app_id}</h4>"
-        vulnerabilities_by_app_id += f"<p>Total vulnerabilities: {count}</p>"
+        app_name = next((row[COLUMN_APPLICATION_FULL_NAME] for row in data if row[COLUMN_APPLICATION_ID] == app_id), "Unknown")
+        vulnerabilities_by_app += f"<h4>{app_name} (ID: {app_id})</h4>"
+        vulnerabilities_by_app += f"<p>Total vulnerabilities: {count}</p>"
         app_data = [row for row in data if row[COLUMN_APPLICATION_ID] == app_id]
         app_priority_count = Counter(row[COLUMN_SEVERITY_RISK] for row in app_data)
-        vulnerabilities_by_app_id += "<ul>"
+        vulnerabilities_by_app += "<ul>"
         for priority in PRIORITY_LEVELS:
-            vulnerabilities_by_app_id += f"<li>{priority}: {app_priority_count[priority]}</li>"
-        vulnerabilities_by_app_id += "</ul>"
+            vulnerabilities_by_app += f"<li>{priority}: {app_priority_count[priority]}</li>"
+        vulnerabilities_by_app += "</ul>"
     
     return template.format(
         styles=styles,
         executive_summary=generate_executive_summary(data),
         total_vulnerabilities=total_vulnerabilities,
         unique_vulnerabilities=unique_vulnerabilities,
-        affected_servers=affected_servers,
+        affected_hosts=affected_hosts,
         priority_1_count=priority_count[PRIORITY_LEVELS[0]],
         priority_1_percentage=priority_count[PRIORITY_LEVELS[0]]/total_vulnerabilities,
         priority_2_count=priority_count[PRIORITY_LEVELS[1]],
@@ -172,9 +179,9 @@ def generate_html_report(data):
         priority_3_count=priority_count[PRIORITY_LEVELS[2]],
         priority_3_percentage=priority_count[PRIORITY_LEVELS[2]]/total_vulnerabilities,
         most_common_vulnerabilities=most_common_vulnerabilities,
-        vulnerable_servers_by_priority=vulnerable_servers_by_priority,
+        vulnerable_hosts_by_priority=vulnerable_hosts_by_priority,
         due_dates_by_priority=due_dates_by_priority,
-        vulnerabilities_by_app_id=vulnerabilities_by_app_id
+        vulnerabilities_by_app=vulnerabilities_by_app
     )
 
 def send_outlook_email(subject, body, recipients):
@@ -210,19 +217,19 @@ if __name__ == "__main__":
 
 ```
 
-These changes accomplish the following:
+Key changes in this update:
 
-1. Corrected the use of 'Severity Risk' as the column name while still accommodating the new format in the data.
-2. Externalized all settings to a separate `config.py` file.
-3. Updated the script to use the configuration file for all settings and column names.
-4. Made the script more flexible by using the externalized settings throughout.
+1. Added `COLUMN_APPLICATION_FULL_NAME` and `COLUMN_SOURCES` to the configuration file.
+2. Created a new function `get_host_or_source()` to use Sources when Host Name / Server is null.
+3. Updated `get_top_vulnerable_hosts()` (renamed from `get_top_vulnerable_servers()`) to use the new `get_host_or_source()` function.
+4. Modified the executive summary and detailed report to use Application Full Name for display purposes.
+5. Updated references to "servers" to "hosts/sources" throughout the report.
 
 To use this updated version:
 
-1. Save the configuration file as `config.py` in the same directory as your main script.
-2. Update your main Python script with the new version provided above.
+1. Replace your existing `config.py` file with the new version provided above.
+2. Update your main Python script with the new version provided.
 3. Ensure that `report_template.html` and `report_styles.css` are in the same directory and their paths are correctly specified in `config.py`.
-4. Adjust the settings in `config.py` as needed for your specific use case.
-5. Run the main script as before.
+4. Run the main script as before.
 
-This new structure allows for easier maintenance and customization of the report generation process. You can now modify settings, file paths, and column names in the `config.py` file without needing to change the main script.
+These changes will now incorporate the Application Full Name for display purposes and use the Sources field when Host Name / Server is null. The report will provide a more accurate representation of your data, using the full application names and accounting for cases where the host name might not be available.
