@@ -1,14 +1,48 @@
-Thank you for providing these updates. I'll modify the script to incorporate these changes. Let's update the script to include the new Application ID column, adjust the Severity Risk (now Priority) format, and modify the executive summary and breakdowns as requested.
+I apologize for the confusion. Thank you for the clarification. Let's make the necessary corrections and externalize all the settings. We'll create a separate configuration file for the settings and update the script accordingly.
 
+First, let's create a configuration file:
 
+```python
+# config.py
 
-Here's the updated script:
+# File paths
+CSV_FILE_PATH = 'path_to_your_csv_file.csv'
+HTML_TEMPLATE_PATH = 'report_template.html'
+CSS_STYLE_PATH = 'report_styles.css'
+OUTPUT_REPORT_PATH = 'security_report.html'
+
+# Email settings
+EMAIL_RECIPIENTS = ['recipient1@example.com', 'recipient2@example.com']
+EMAIL_SUBJECT = 'Security Vulnerability Summary Report'
+
+# Report settings
+TOP_VULNERABILITIES_COUNT = 5
+TOP_SERVERS_COUNT = 5
+TOP_APP_IDS_COUNT = 5
+
+# Time frames for due date outlook (in days)
+DUE_DATE_TIME_FRAMES = [10, 30, 45, 60, 100, 180]
+
+# Column names
+COLUMN_SEVERITY_RISK = 'Severity Risk'
+COLUMN_APPLICATION_ID = 'Application ID'
+COLUMN_HOST_NAME = 'Host Name / Server'
+COLUMN_TITLE = 'Title'
+COLUMN_DUE_DATE = 'Due Date'
+
+# Priority levels
+PRIORITY_LEVELS = ['Priority 1', 'Priority 2', 'Priority 3']
+
+```
+
+Now, let's update the main script to use this configuration file and make the necessary corrections:
 
 ```python
 import csv
 from collections import Counter
-from datetime import datetime, timedelta
+from datetime import datetime
 import win32com.client
+from config import *
 
 def read_csv_data(file_path):
     with open(file_path, 'r') as f:
@@ -19,20 +53,19 @@ def parse_date(date_string):
     return datetime.strptime(date_string, '%Y-%m-%d %H:%M:%S')
 
 def get_priority_data(data, priority):
-    return [row for row in data if row['Priority'] == f'Priority {priority}']
+    return [row for row in data if row[COLUMN_SEVERITY_RISK] == priority]
 
-def get_top_vulnerable_servers(data, priority, top_n=5):
+def get_top_vulnerable_servers(data, priority, top_n=TOP_SERVERS_COUNT):
     priority_data = get_priority_data(data, priority)
-    server_counter = Counter(row['Host Name / Server'] for row in priority_data)
+    server_counter = Counter(row[COLUMN_HOST_NAME] for row in priority_data)
     return server_counter.most_common(top_n)
 
 def get_due_date_outlook(data, priority):
     priority_data = get_priority_data(data, priority)
     today = datetime.now()
-    due_dates = [parse_date(row['Due Date']) for row in priority_data]
+    due_dates = [parse_date(row[COLUMN_DUE_DATE]) for row in priority_data]
     
-    time_frames = [10, 30, 45, 60, 100, 180]
-    due_within_periods = {days: sum(1 for date in due_dates if (date - today).days <= days) for days in time_frames}
+    due_within_periods = {days: sum(1 for date in due_dates if (date - today).days <= days) for days in DUE_DATE_TIME_FRAMES}
     
     total_vulnerabilities = len(priority_data)
     return {days: (count, count/total_vulnerabilities if total_vulnerabilities else 0) 
@@ -40,22 +73,26 @@ def get_due_date_outlook(data, priority):
 
 def generate_executive_summary(data):
     total_vulnerabilities = len(data)
-    unique_vulnerabilities = len(set((row['Title'], row['Priority']) for row in data))
-    affected_servers = len(set(row['Host Name / Server'] for row in data))
-    priority_count = Counter(row['Priority'] for row in data)
-    app_id_count = Counter(row['Application ID'] for row in data)
+    unique_vulnerabilities = len(set((row[COLUMN_TITLE], row[COLUMN_SEVERITY_RISK]) for row in data))
+    affected_servers = len(set(row[COLUMN_HOST_NAME] for row in data))
+    priority_count = Counter(row[COLUMN_SEVERITY_RISK] for row in data)
+    app_id_count = Counter(row[COLUMN_APPLICATION_ID] for row in data)
     
-    top_app_ids = app_id_count.most_common(5)
+    top_app_ids = app_id_count.most_common(TOP_APP_IDS_COUNT)
     
-    nearest_due_date = min(parse_date(row['Due Date']) for row in data)
+    nearest_due_date = min(parse_date(row[COLUMN_DUE_DATE]) for row in data)
     
     summary = f"""
     <h2>Executive Summary</h2>
     <p>This report covers {total_vulnerabilities} total vulnerabilities, including {unique_vulnerabilities} unique vulnerabilities across {affected_servers} host names.</p>
     <ul>
-        <li>High Priority (P1): {priority_count['Priority 1']} ({priority_count['Priority 1']/total_vulnerabilities:.1%})</li>
-        <li>Medium Priority (P2): {priority_count['Priority 2']} ({priority_count['Priority 2']/total_vulnerabilities:.1%})</li>
-        <li>Low Priority (P3): {priority_count['Priority 3']} ({priority_count['Priority 3']/total_vulnerabilities:.1%})</li>
+    """
+    
+    for priority in PRIORITY_LEVELS:
+        count = priority_count[priority]
+        summary += f"<li>{priority}: {count} ({count/total_vulnerabilities:.1%})</li>"
+    
+    summary += """
     </ul>
     <p>Top 5 Application IDs by vulnerability count:</p>
     <ol>
@@ -76,33 +113,33 @@ def generate_html_list(items):
     return "<ol>" + "".join(f"<li>{item[0]}: {item[1]} instances</li>" for item in items) + "</ol>"
 
 def generate_html_report(data):
-    with open('report_template.html', 'r') as f:
+    with open(HTML_TEMPLATE_PATH, 'r') as f:
         template = f.read()
     
-    with open('report_styles.css', 'r') as f:
+    with open(CSS_STYLE_PATH, 'r') as f:
         styles = f.read()
     
     total_vulnerabilities = len(data)
-    unique_vulnerabilities = len(set((row['Title'], row['Priority']) for row in data))
-    affected_servers = len(set(row['Host Name / Server'] for row in data))
-    priority_count = Counter(row['Priority'] for row in data)
-    app_id_count = Counter(row['Application ID'] for row in data)
+    unique_vulnerabilities = len(set((row[COLUMN_TITLE], row[COLUMN_SEVERITY_RISK]) for row in data))
+    affected_servers = len(set(row[COLUMN_HOST_NAME] for row in data))
+    priority_count = Counter(row[COLUMN_SEVERITY_RISK] for row in data)
+    app_id_count = Counter(row[COLUMN_APPLICATION_ID] for row in data)
     
-    vulnerability_counter = Counter(row['Title'] for row in data)
-    most_common_vulnerabilities = generate_html_list(vulnerability_counter.most_common(5))
+    vulnerability_counter = Counter(row[COLUMN_TITLE] for row in data)
+    most_common_vulnerabilities = generate_html_list(vulnerability_counter.most_common(TOP_VULNERABILITIES_COUNT))
     
     vulnerable_servers_by_priority = ""
     due_dates_by_priority = ""
-    for priority in range(1, 4):
+    for priority in PRIORITY_LEVELS:
         top_servers = get_top_vulnerable_servers(data, priority)
-        vulnerable_servers_by_priority += f"<h4>Priority {priority}</h4>"
+        vulnerable_servers_by_priority += f"<h4>{priority}</h4>"
         if top_servers:
             vulnerable_servers_by_priority += generate_html_list(top_servers)
         else:
             vulnerable_servers_by_priority += "<p>No vulnerabilities found for this priority.</p>"
         
         due_date_outlook = get_due_date_outlook(data, priority)
-        due_dates_by_priority += f"<h4>Priority {priority}</h4>"
+        due_dates_by_priority += f"<h4>{priority}</h4>"
         if sum(count for count, _ in due_date_outlook.values()) > 0:
             due_dates_by_priority += "<table><tr><th>Outlook</th><th>Vulnerabilities</th><th>Percentage</th></tr>"
             for days, (count, percentage) in due_date_outlook.items():
@@ -115,10 +152,10 @@ def generate_html_report(data):
     for app_id, count in app_id_count.most_common():
         vulnerabilities_by_app_id += f"<h4>Application ID: {app_id}</h4>"
         vulnerabilities_by_app_id += f"<p>Total vulnerabilities: {count}</p>"
-        app_data = [row for row in data if row['Application ID'] == app_id]
-        app_priority_count = Counter(row['Priority'] for row in app_data)
+        app_data = [row for row in data if row[COLUMN_APPLICATION_ID] == app_id]
+        app_priority_count = Counter(row[COLUMN_SEVERITY_RISK] for row in app_data)
         vulnerabilities_by_app_id += "<ul>"
-        for priority in ['Priority 1', 'Priority 2', 'Priority 3']:
+        for priority in PRIORITY_LEVELS:
             vulnerabilities_by_app_id += f"<li>{priority}: {app_priority_count[priority]}</li>"
         vulnerabilities_by_app_id += "</ul>"
     
@@ -128,12 +165,12 @@ def generate_html_report(data):
         total_vulnerabilities=total_vulnerabilities,
         unique_vulnerabilities=unique_vulnerabilities,
         affected_servers=affected_servers,
-        priority_1_count=priority_count['Priority 1'],
-        priority_1_percentage=priority_count['Priority 1']/total_vulnerabilities,
-        priority_2_count=priority_count['Priority 2'],
-        priority_2_percentage=priority_count['Priority 2']/total_vulnerabilities,
-        priority_3_count=priority_count['Priority 3'],
-        priority_3_percentage=priority_count['Priority 3']/total_vulnerabilities,
+        priority_1_count=priority_count[PRIORITY_LEVELS[0]],
+        priority_1_percentage=priority_count[PRIORITY_LEVELS[0]]/total_vulnerabilities,
+        priority_2_count=priority_count[PRIORITY_LEVELS[1]],
+        priority_2_percentage=priority_count[PRIORITY_LEVELS[1]]/total_vulnerabilities,
+        priority_3_count=priority_count[PRIORITY_LEVELS[2]],
+        priority_3_percentage=priority_count[PRIORITY_LEVELS[2]]/total_vulnerabilities,
         most_common_vulnerabilities=most_common_vulnerabilities,
         vulnerable_servers_by_priority=vulnerable_servers_by_priority,
         due_dates_by_priority=due_dates_by_priority,
@@ -156,94 +193,36 @@ def send_outlook_email(subject, body, recipients):
     print(f"Email sent to: {', '.join(recipients)}")
 
 if __name__ == "__main__":
-    csv_file_path = 'path_to_your_csv_file.csv'
-    email_recipients = ['recipient1@example.com', 'recipient2@example.com']
-    email_subject = 'Security Vulnerability Summary Report'
-
-    data = read_csv_data(csv_file_path)
+    data = read_csv_data(CSV_FILE_PATH)
     report_html = generate_html_report(data)
     
-    with open('security_report.html', 'w') as f:
+    with open(OUTPUT_REPORT_PATH, 'w') as f:
         f.write(report_html)
     
     try:
-        send_outlook_email(email_subject, report_html, email_recipients)
+        send_outlook_email(EMAIL_SUBJECT, report_html, EMAIL_RECIPIENTS)
         print("Report sent successfully via Outlook!")
     except Exception as e:
         print(f"An error occurred while sending the email: {str(e)}")
-        print("The report has been saved as 'security_report.html' in the current directory.")
+        print(f"The report has been saved as '{OUTPUT_REPORT_PATH}' in the current directory.")
 
     print("Process completed.")
 
 ```
 
-Now, let's update the HTML template to include the new Application ID breakdown:
+These changes accomplish the following:
 
-```html
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Security Vulnerability Summary Report</title>
-    <style>
-        {styles}
-    </style>
-</head>
-<body>
-    <h1>Security Vulnerability Summary Report</h1>
-
-    {executive_summary}
-
-    <hr>
-
-    <h2>Detailed Report</h2>
-
-    <h3>Key Statistics</h3>
-    <ul>
-        <li>Total vulnerabilities: {total_vulnerabilities}</li>
-        <li>Unique vulnerabilities: {unique_vulnerabilities}</li>
-        <li>Affected host names: {affected_servers}</li>
-        <li>Priority breakdown:
-            <ul>
-                <li>Priority 1 (High): {priority_1_count} ({priority_1_percentage:.1%})</li>
-                <li>Priority 2 (Medium): {priority_2_count} ({priority_2_percentage:.1%})</li>
-                <li>Priority 3 (Low): {priority_3_count} ({priority_3_percentage:.1%})</li>
-            </ul>
-        </li>
-    </ul>
-
-    <h3>Most Common Vulnerabilities</h3>
-    {most_common_vulnerabilities}
-
-    <h3>Host Names with Most Vulnerabilities (by Priority)</h3>
-    {vulnerable_servers_by_priority}
-
-    <h3>Upcoming Due Dates (by Priority)</h3>
-    {due_dates_by_priority}
-
-    <h3>Vulnerabilities by Application ID</h3>
-    {vulnerabilities_by_app_id}
-
-    <p>This summary provides a high-level overview of the current security posture. For detailed information on specific vulnerabilities or affected host names, please refer to the full vulnerability report.</p>
-</body>
-</html>
-
-```
-
-Key changes in this update:
-
-1. Added support for the new Application ID column.
-2. Updated references from 'Severity Risk' to 'Priority' and adjusted the format (e.g., 'Priority 1' instead of 'priority 1').
-3. Modified the executive summary to show top 5 vulnerabilities by Application ID instead of top critical vulnerabilities.
-4. Added a breakdown of vulnerabilities by Application ID throughout the report.
-5. Updated all relevant functions to use the new Priority format.
+1. Corrected the use of 'Severity Risk' as the column name while still accommodating the new format in the data.
+2. Externalized all settings to a separate `config.py` file.
+3. Updated the script to use the configuration file for all settings and column names.
+4. Made the script more flexible by using the externalized settings throughout.
 
 To use this updated version:
 
-1. Replace your existing `report_template.html` with the new version provided above.
-2. Update your Python script with the new version provided.
-3. Ensure the `report_styles.css` file is in the same directory as your script.
-4. Run the script as before.
+1. Save the configuration file as `config.py` in the same directory as your main script.
+2. Update your main Python script with the new version provided above.
+3. Ensure that `report_template.html` and `report_styles.css` are in the same directory and their paths are correctly specified in `config.py`.
+4. Adjust the settings in `config.py` as needed for your specific use case.
+5. Run the main script as before.
 
-These changes will now incorporate the new Application ID column, use the correct Priority format, and provide breakdowns by both Priority and Application ID throughout the report. The executive summary now includes the top 5 Application IDs by vulnerability count instead of the top critical vulnerabilities.
+This new structure allows for easier maintenance and customization of the report generation process. You can now modify settings, file paths, and column names in the `config.py` file without needing to change the main script.
