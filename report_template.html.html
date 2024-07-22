@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Security Vulnerability Summary Report</title>
+    <style>
+        {styles}
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Security Vulnerability Summary Report</h1>
+
+        {executive_summary}
+
+        <div class="stat-box">
+            <h2>Key Statistics</h2>
+            <ul>
+                <li>Total vulnerabilities: {total_vulnerabilities}</li>
+                <li>Unique vulnerabilities: {unique_vulnerabilities}</li>
+                <li>Affected host names: {affected_hosts}</li>
+                <li>Priority breakdown:
+                    <ul>
+                        <li class="priority-high">Priority 1 (High): {priority_1_count} ({priority_1_percentage:.1%})</li>
+                        <li class="priority-medium">Priority 2 (Medium): {priority_2_count} ({priority_2_percentage:.1%})</li>
+                        <li class="priority-low">Priority 3 (Low): {priority_3_count} ({priority_3_percentage:.1%})</li>
+                    </ul>
+                </li>
+            </ul>
+        </div>
+
+        <div class="stat-box">
+            <h2>Most Common Vulnerabilities</h2>
+            {most_common_vulnerabilities}
+        </div>
+
+        <div class="stat-box">
+            <h2>Host Names with Most Vulnerabilities (by Priority)</h2>
+            {vulnerable_hosts_by_priority}
+        </div>
+
+        <div class="stat-box">
+            <h2>Upcoming Due Dates (by Priority)</h2>
+            {due_dates_by_priority}
+        </div>
+
+        <div class="stat-box">
+            <h2>Vulnerabilities by Application</h2>
+            {vulnerabilities_by_app}
+        </div>
+
+        <div class="stat-box">
+            {app_deliverables}
+        </div>
+
+        <footer>
+            <p>This report was generated automatically. If you have any questions or concerns, please contact the security team.</p>
+        </footer>
+    </div>
+</body>
+</html>
