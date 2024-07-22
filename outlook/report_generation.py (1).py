@@ -1,9 +1,9 @@
-from collections import Counter
+from collections import Counter, defaultdict
 from datetime import datetime
 from config import *
 from data_processing import get_host_or_source, is_non_server_vuln, get_top_vulnerable_hosts, get_due_date_outlook, parse_date
 
-def generate_executive_summary(data):
+def generate_executive_summary(data, owner_summary):
     total_vulnerabilities = len(data)
     unique_vulnerabilities = len(set((row[COLUMN_TITLE], row[COLUMN_SEVERITY_RISK]) for row in data))
     affected_hosts = len(set(get_host_or_source(row) for row in data if not is_non_server_vuln(row)))
@@ -43,6 +43,17 @@ def generate_executive_summary(data):
             <div class="severity-breakdown">{priority_breakdown}</div>
         </li>"""
     
+    summary += """
+    </ul>
+    <p>Owners with Past Due or Due in 0 to 10 Days deliverables:</p>
+    <ul>
+    """
+    
+    for owner, conditions in owner_summary.items():
+        critical_conditions = [cond for cond in conditions if 'Past Due' in cond or 'Due 0 to 10 Days' in cond]
+        if critical_conditions:
+            summary += f"<li>{owner}: {', '.join(critical_conditions)}</li>"
+    
     summary += f"""
     </ul>
     <p>Immediate action is required to address past due and high-priority vulnerabilities.</p>
@@ -63,26 +74,17 @@ def get_condition_class(condition):
     else:
         return ''
 
-def generate_app_deliverables_html(rd_data, owner_summary):
-    html = "<h2>Application Deliverables</h2>"
-    for app, app_data in rd_data.items():
-        html += f"<h3>{app} (ID: {app_data['AppID']})</h3>"
-        html += "<table>"
-        html += "<tr><th>Owner</th><th>Condition</th></tr>"
-        for deliverable in app_data['Deliverables']:
-            condition_class = get_condition_class(deliverable['Condition'])
-            html += f"<tr><td>{deliverable['Owner']}</td><td class='{condition_class}'>{deliverable['Condition']}</td></tr>"
-        html += "</table>"
-    
-    html += "<h2>Owner Summary</h2>"
+def generate_owner_deliverables_html(owner_summary):
+    html = "<h2>Owner Deliverables Summary</h2>"
     html += "<table>"
-    html += "<tr><th>Owner</th><th>Condition</th><th>Count</th></tr>"
+    html += "<tr><th>Owner</th><th>Conditions</th></tr>"
     
-    # Group and count by owner and condition
     for owner, conditions in owner_summary.items():
+        html += f"<tr><td>{owner}</td><td>"
         for condition, count in sorted(conditions.items(), key=lambda x: (x[1], x[0]), reverse=True):
             condition_class = get_condition_class(condition)
-            html += f"<tr><td>{owner}</td><td class='{condition_class}'>{condition}</td><td>{count}</td></tr>"
+            html += f"<div class='{condition_class}'>{condition}: {count}</div>"
+        html += "</td></tr>"
     
     html += "</table>"
     
@@ -141,11 +143,11 @@ def generate_html_report(data, rd_data, owner_summary):
             vulnerabilities_by_app += f'<li class="{class_name}">{priority}: {app_priority_count[priority]}</li>'
         vulnerabilities_by_app += "</ul>"
     
-    app_deliverables_html = generate_app_deliverables_html(rd_data, owner_summary)
+    owner_deliverables_html = generate_owner_deliverables_html(owner_summary)
     
     return template.format(
         styles=styles,
-        executive_summary=generate_executive_summary(data),
+        executive_summary=generate_executive_summary(data, owner_summary),
         total_vulnerabilities=total_vulnerabilities,
         unique_vulnerabilities=unique_vulnerabilities,
         affected_hosts=affected_hosts,
@@ -159,5 +161,5 @@ def generate_html_report(data, rd_data, owner_summary):
         vulnerable_hosts_by_priority=vulnerable_hosts_by_priority,
         due_dates_by_priority=due_dates_by_priority,
         vulnerabilities_by_app=vulnerabilities_by_app,
-        app_deliverables=app_deliverables_html
+        app_deliverables=owner_deliverables_html
     )
