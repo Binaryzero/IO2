@@ -77,10 +77,13 @@ def generate_app_deliverables_html(rd_data, owner_summary):
     html += "<h2>Owner Summary</h2>"
     html += "<table>"
     html += "<tr><th>Owner</th><th>Condition</th><th>Count</th></tr>"
+    
+    # Group and count by owner and condition
     for owner, conditions in owner_summary.items():
-        for condition, count in conditions.items():
+        for condition, count in sorted(conditions.items(), key=lambda x: (x[1], x[0]), reverse=True):
             condition_class = get_condition_class(condition)
             html += f"<tr><td>{owner}</td><td class='{condition_class}'>{condition}</td><td>{count}</td></tr>"
+    
     html += "</table>"
     
     return html
