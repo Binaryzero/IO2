@@ -14,11 +14,32 @@ def generate_executive_summary(data, owner_summary):
     
     today = datetime.now().date()
     past_due = sum(1 for row in data if parse_date(row[COLUMN_DUE_DATE]).date() < today)
+
+    total_deliverables = sum(sum(conditions.values()) for conditions in owner_summary.values())
     
     summary = f"""
     <h2>Executive Summary</h2>
     <p>This report covers {total_vulnerabilities} total vulnerabilities, including {unique_vulnerabilities} unique vulnerabilities across {affected_hosts} hosts/sources.</p>
+    <p>There are {total_deliverables} total deliverables across all owners.</p>
     <p><strong class="priority-high">Past Due Vulnerabilities: {past_due}</strong></p>
+    
+    <h3>Owners with Past Due or Due in 0 to 10 Days deliverables:</h3>
+    <ul>
+    """
+    
+    for owner, conditions in owner_summary.items():
+        critical_conditions = {cond: count for cond, count in conditions.items() if 'Past Due' in cond or 'Due 0 to 10 Days' in cond}
+        if critical_conditions:
+            summary += f"<li>{owner}:<ul>"
+            for cond, count in critical_conditions.items():
+                condition_class = get_condition_class(cond)
+                summary += f"<li class='{condition_class}'>{cond}: {count}</li>"
+            summary += "</ul></li>"
+    
+    summary += """
+    </ul>
+    
+    <h3>Vulnerability Summary:</h3>
     <ul>
     """
     
@@ -42,17 +63,6 @@ def generate_executive_summary(data, owner_summary):
             <div class="app-name">{app_name} (ID: {app_id}): {count} vulnerabilities</div>
             <div class="severity-breakdown">{priority_breakdown}</div>
         </li>"""
-    
-    summary += """
-    </ul>
-    <p>Owners with Past Due or Due in 0 to 10 Days deliverables:</p>
-    <ul>
-    """
-    
-    for owner, conditions in owner_summary.items():
-        critical_conditions = [cond for cond in conditions if 'Past Due' in cond or 'Due 0 to 10 Days' in cond]
-        if critical_conditions:
-            summary += f"<li>{owner}: {', '.join(critical_conditions)}</li>"
     
     summary += f"""
     </ul>
