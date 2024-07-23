@@ -19,7 +19,10 @@ from config import (
     COLUMN_TITLE,
     COLUMN_SEVERITY_RISK,
     COLUMN_APPLICATION_ID,
-    COLUMN_APPLICATION_FULL_NAME
+    COLUMN_APPLICATION_FULL_NAME,
+    COLUMN_DUE_DATE,
+    COLUMN_HOST_NAME,
+    COLUMN_SOURCES
 )
 from data_processing import (
     get_host_or_source,
@@ -47,6 +50,80 @@ def get_condition_class(condition: str) -> str:
         return 'priority-medium'
     else:
         return ''
+
+def generate_executive_summary(data: List[Dict[str, str]], owner_summary: Dict[str, Dict[str, int]]) -> str:
+    """
+    Generate the executive summary for the security vulnerability report.
+
+    Args:
+        data (List[Dict[str, str]]): List of vulnerability data dictionaries.
+        owner_summary (Dict[str, Dict[str, int]]): Summary of deliverables by owner.
+
+    Returns:
+        str: HTML string containing the executive summary.
+    """
+    total_vulnerabilities = len(data)
+    unique_vulnerabilities = len(set((row[COLUMN_TITLE], row[COLUMN_SEVERITY_RISK]) for row in data))
+    affected_hosts = len(set(get_host_or_source(row) for row in data if not is_non_server_vuln(row)))
+    priority_count = Counter(row[COLUMN_SEVERITY_RISK] for row in data)
+    
+    today = datetime.now().date()
+    past_due_vulnerabilities = sum(1 for row in data if parse_date(row[COLUMN_DUE_DATE]).date() < today)
+
+    total_deliverables = sum(sum(conditions.values()) for conditions in owner_summary.values())
+    past_due_deliverables = sum(sum(count for cond, count in conditions.items() if 'Past Due' in cond) for conditions in owner_summary.values())
+    
+    summary = f"""
+    <h2>Executive Summary</h2>
+    
+    <p>This report provides an overview of the current security vulnerability landscape within our organization. 
+    Key findings from the analysis are as follows:</p>
+    
+    <ul>
+        <li>Total identified vulnerabilities: <strong>{total_vulnerabilities}</strong></li>
+        <li>Unique vulnerabilities: <strong>{unique_vulnerabilities}</strong></li>
+        <li>Affected hosts/servers: <strong>{affected_hosts}</strong></li>
+        <li>Past due vulnerabilities: <strong class="priority-high">{past_due_vulnerabilities}</strong></li>
+    </ul>
+    
+    <h3>Priority Breakdown:</h3>
+    <ul>
+    """
+    
+    for priority in PRIORITY_LEVELS:
+        count = priority_count[priority]
+        percentage = count / total_vulnerabilities * 100
+        priority_class = priority.lower().replace(' ', '-')
+        summary += f'<li class="{priority_class}">{priority}: <strong>{count}</strong> ({percentage:.1f}%)</li>'
+    
+    summary += f"""
+    </ul>
+    
+    <h3>Deliverable Summary:</h3>
+    <p>There are <strong>{total_deliverables}</strong> total deliverables across all owners.</p>
+    <p><strong class="priority-high">Past Due Deliverables: {past_due_deliverables}</strong></p>
+    
+    <h4>Critical Deliverables:</h4>
+    <table class="summary-table">
+    <tr><th>Owner</th><th>Condition</th><th>Count</th></tr>
+    """
+    
+    for owner, conditions in owner_summary.items():
+        critical_conditions = {cond: count for cond, count in conditions.items() if 'Past Due' in cond or 'Due 0 to 10 Days' in cond}
+        if critical_conditions:
+            for cond, count in critical_conditions.items():
+                condition_class = get_condition_class(cond)
+                summary += f"<tr><td>{owner}</td><td class='{condition_class}'>{cond}</td><td>{count}</td></tr>"
+    
+    summary += """
+    </table>
+    
+    <p>Immediate action is required to address past due and high-priority vulnerabilities and deliverables. 
+    Please refer to the detailed sections below for specific information on vulnerable hosts, 
+    upcoming due dates, and application-specific vulnerabilities.</p>
+    """
+    
+    return summary
 
 def prepare_report_data(data: List[Dict[str, str]], rd_data: Dict[str, Dict[str, List[Dict[str, str]]]], owner_summary: Dict[str, Dict[str, int]]) -> Dict[str, Any]:
     """
@@ -91,7 +168,10 @@ def prepare_report_data(data: List[Dict[str, str]], rd_data: Dict[str, Dict[str,
             'priorities': {priority: app_priority_count[priority] for priority in PRIORITY_LEVELS}
         })
     
+    executive_summary = generate_executive_summary(data, owner_summary)
+    
     return {
+        'executive_summary': executive_summary,
         'total_vulnerabilities': total_vulnerabilities,
         'unique_vulnerabilities': unique_vulnerabilities,
         'affected_hosts': affected_hosts,
