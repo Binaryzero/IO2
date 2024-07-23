@@ -1,40 +1,124 @@
-I understand. If the logging shows that the unrendered text is being passed into the report, the issue is likely occurring during the Jinja2 template rendering process. Let's investigate and fix this issue.
+Thank you for providing that information. If the security report is still basically the same as the template with no replacement happening, and we've confirmed that Jinja2 is up to date (version 3.1.2 is recent), we need to investigate further. Let's try a few more troubleshooting steps:
 
-1. First, let's modify the `generate_html_report` function to include more detailed logging:
+1. First, let's simplify the template to isolate the issue. Create a new, very simple template file called `test_template.html`:
+
+```html
+<!DOCTYPE html>
+<html>
+<body>
+    <h1>Test Template</h1>
+    <p>Total vulnerabilities: {{ total_vulnerabilities }}</p>
+    <p>Unique vulnerabilities: {{ unique_vulnerabilities }}</p>
+    <p>Affected hosts: {{ affected_hosts }}</p>
+</body>
+</html>
+
+```
+
+2. Now, let's create a simple test function in `report_generation.py` to render this template:
+
+```python
+from jinja2 import Environment, FileSystemLoader
+import os
+
+def test_template_rendering():
+    # Get the directory of the current script
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    
+    # Set up Jinja2 environment
+    env = Environment(loader=FileSystemLoader(current_dir))
+    
+    # Load the test template
+    template = env.get_template('test_template.html')
+    
+    # Prepare some test data
+    test_data = {
+        'total_vulnerabilities': 100,
+        'unique_vulnerabilities': 50,
+        'affected_hosts': 25
+    }
+    
+    # Render the template
+    rendered_html = template.render(**test_data)
+    
+    # Print the rendered HTML
+    print("Rendered HTML:")
+    print(rendered_html)
+    
+    # Save the rendered HTML to a file
+    output_path = os.path.join(current_dir, 'test_output.html')
+    with open(output_path, 'w', encoding='utf-8') as f:
+        f.write(rendered_html)
+    
+    print(f"Test output saved to: {output_path}")
+
+if __name__ == "__main__":
+    test_template_rendering()
+
+```
+
+3. Run this test function independently:
+
+```
+python report_generation.py
+```
+
+This should output the rendered HTML and save it to a file. Check if the variables are properly replaced in this simple test case.
+
+4. If the simple test works, let's add more detailed logging to the `prepare_report_data` function:
 
 ```python
 import logging
 
+def prepare_report_data(data: List[Dict[str, str]], rd_data: Dict[str, Dict[str, List[Dict[str, str]]]], owner_summary: Dict[str, Dict[str, int]]) -> Dict[str, Any]:
+    logging.info("Starting prepare_report_data function")
+    
+    total_vulnerabilities = len(data)
+    unique_vulnerabilities = len(set((row[COLUMN_TITLE], row[COLUMN_SEVERITY_RISK]) for row in data))
+    affected_hosts = len(set(get_host_or_source(row) for row in data if not is_non_server_vuln(row)))
+    
+    logging.info(f"Total vulnerabilities: {total_vulnerabilities}")
+    logging.info(f"Unique vulnerabilities: {unique_vulnerabilities}")
+    logging.info(f"Affected hosts: {affected_hosts}")
+    
+    # ... (rest of the function)
+    
+    report_data = {
+        'executive_summary': executive_summary,
+        'total_vulnerabilities': total_vulnerabilities,
+        'unique_vulnerabilities': unique_vulnerabilities,
+        'affected_hosts': affected_hosts,
+        'priority_breakdown': priority_breakdown,
+        'most_common_vulnerabilities': most_common_vulnerabilities,
+        'vulnerable_hosts_by_priority': vulnerable_hosts_by_priority,
+        'due_dates_by_priority': due_dates_by_priority,
+        'vulnerabilities_by_app': vulnerabilities_by_app,
+        'owner_deliverables': owner_summary
+    }
+    
+    logging.info("Report data prepared. Keys:")
+    for key, value in report_data.items():
+        logging.info(f"  {key}: {type(value)}")
+        if isinstance(value, (list, dict)):
+            logging.info(f"    Length: {len(value)}")
+    
+    return report_data
+
+```
+
+5. In the `generate_html_report` function, let's add a step to verify that the data is being passed correctly to the template:
+
+```python
 def generate_html_report(data: List[Dict[str, str]], rd_data: Dict[str, Dict[str, List[Dict[str, str]]]], owner_summary: Dict[str, Dict[str, int]]) -> str:
-    """
-    Generate the complete HTML report using Jinja2 templating.
-
-    Args:
-        data (List[Dict[str, str]]): List of vulnerability data dictionaries.
-        rd_data (Dict[str, Dict[str, List[Dict[str, str]]]]): Processed application deliverables data.
-        owner_summary (Dict[str, Dict[str, int]]): Summary of deliverables by owner.
-
-    Returns:
-        str: Complete HTML report as a string.
-    """
-    logging.info("Starting HTML report generation")
-    
-    # Set up Jinja2 environment
-    env = Environment(loader=FileSystemLoader('.'), autoescape=True)
-    template = env.get_template(HTML_TEMPLATE_PATH)
-    logging.info(f"Loaded template from {HTML_TEMPLATE_PATH}")
-    
-    # Read CSS styles
-    with open(CSS_STYLE_PATH, 'r') as f:
-        styles = f.read()
-    logging.info(f"Loaded CSS styles from {CSS_STYLE_PATH}")
+    # ... (earlier part of the function)
     
     # Prepare data for the template
     report_data = prepare_report_data(data, rd_data, owner_summary)
-    logging.info("Prepared report data")
     
-    # Log the keys in report_data
-    logging.info(f"Keys in report_data: {', '.join(report_data.keys())}")
+    # Verify data before rendering
+    logging.info("Verifying data before rendering:")
+    for key, value in report_data.items():
+        logging.info(f"  {key}: {value[:100] if isinstance(value, str) else value}")
     
     # Render the template
     try:
@@ -44,139 +128,35 @@ def generate_html_report(data: List[Dict[str, str]], rd_data: Dict[str, Dict[str
         logging.error(f"Error rendering template: {str(e)}")
         raise
     
-    logging.info(f"First 200 characters of rendered HTML: {rendered_html[:200]}")
-    
-    return rendered_html
+    # ... (rest of the function)
 
 ```
 
-2. Next, let's double-check the Jinja2 template to ensure it's properly formatted. Here's a snippet of how the beginning of the template should look:
-
-```html
-{% raw %}
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Security Vulnerability Summary Report</title>
-    <style>
-        {{ styles | safe }}
-    </style>
-</head>
-<body>
-    <div class="container">
-        <h1>Security Vulnerability Summary Report</h1>
-
-        {{ executive_summary | safe }}
-
-        <div class="stat-box">
-            <h2>Key Statistics</h2>
-            <ul>
-                <li>Total vulnerabilities: {{ total_vulnerabilities }}</li>
-                <li>Unique vulnerabilities: {{ unique_vulnerabilities }}</li>
-                <li>Affected host names: {{ affected_hosts }}</li>
-                <li>Priority breakdown:
-                    <ul>
-                        {% for priority, count, percentage in priority_breakdown %}
-                            <li class="{{ priority | lower | replace(' ', '-') }}">
-                                {{ priority }}: {{ count }} ({{ '{:.1%}'.format(percentage) }})
-                            </li>
-                        {% endfor %}
-                    </ul>
-                </li>
-            </ul>
-        </div>
-
-        <!-- Rest of the template -->
-    </div>
-</body>
-</html>
-{% endraw %}
-
-```
-
-3. Update the main script to include logging:
+6. Finally, let's add a check in the main script to verify the content of the generated report:
 
 ```python
-import logging
-from config import *
-from data_processing import read_csv_data, process_rd_csv
-from report_generation import generate_html_report
-from email_sender import send_outlook_email
-
 def main():
-    logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
-    
-    logging.info("Starting the report generation process")
-    
-    # Read vulnerability data
-    vulnerability_data = read_csv_data(CSV_FILE_PATH)
-    logging.info(f"Read {len(vulnerability_data)} vulnerability records")
-    
-    # Read and process application deliverables data
-    rd_data, owner_summary = process_rd_csv(RD_CSV_FILE_PATH)
-    logging.info(f"Processed application deliverables data: {len(rd_data)} applications, {len(owner_summary)} owners")
+    # ... (earlier part of the function)
     
     # Generate HTML report
     report_html = generate_html_report(vulnerability_data, rd_data, owner_summary)
     logging.info(f"Generated HTML report, length: {len(report_html)} characters")
     
-    # Save report to file
-    with open(OUTPUT_REPORT_PATH, 'w', encoding='utf-8') as f:
-        f.write(report_html)
-    logging.info(f"Saved report to {OUTPUT_REPORT_PATH}")
+    # Verify report content
+    logging.info("Verifying report content:")
+    logging.info(f"Report starts with: {report_html[:200]}")
+    logging.info(f"Report ends with: {report_html[-200:]}")
     
-    # Send email
-    try:
-        send_outlook_email(EMAIL_SUBJECT, report_html, EMAIL_RECIPIENTS)
-        logging.info("Email sent successfully")
-    except Exception as e:
-        logging.error(f"An error occurred while sending the email: {str(e)}")
-        logging.info(f"The report has been saved as '{OUTPUT_REPORT_PATH}' in the current directory.")
-
-    logging.info("Process completed.")
-
-if __name__ == "__main__":
-    main()
-
-```
-
-4. Check the Jinja2 version:
-Make sure you're using a recent version of Jinja2. You can check this by adding the following to the top of your main script:
-
-```python
-import jinja2
-print(f"Jinja2 version: {jinja2.__version__}")
-```
-
-5. Verify the template loading:
-Add a check to ensure the template is being loaded correctly:
-
-```python
-def generate_html_report(data: List[Dict[str, str]], rd_data: Dict[str, Dict[str, List[Dict[str, str]]]], owner_summary: Dict[str, Dict[str, int]]) -> str:
-    logging.info("Starting HTML report generation")
+    # Check for unrendered tags
+    if '{{' in report_html or '{%' in report_html:
+        logging.warning("Unrendered Jinja2 tags found in the report")
+        unrendered_tags = re.findall(r'{{.*?}}|{%.*?%}', report_html)
+        logging.warning(f"Unrendered tags: {unrendered_tags[:10]}")  # Show first 10 unrendered tags
     
-    # Set up Jinja2 environment
-    env = Environment(loader=FileSystemLoader('.'), autoescape=True)
-    try:
-        template = env.get_template(HTML_TEMPLATE_PATH)
-        logging.info(f"Successfully loaded template from {HTML_TEMPLATE_PATH}")
-        # Print the first 200 characters of the template
-        logging.info(f"First 200 characters of template: {template.render()[:200]}")
-    except Exception as e:
-        logging.error(f"Error loading template: {str(e)}")
-        raise
-
-    # ... rest of the function ...
+    # ... (rest of the function)
 
 ```
 
-After making these changes, run the script again. The detailed logging should help identify where the issue is occurring. Here are some things to look out for:
+After making these changes, run the main script again. The detailed logging should provide more insight into what's happening during the template rendering process. 
 
-1. Check if the template is being loaded correctly. If not, there might be an issue with the file path or permissions.
-2. Verify that all the keys in `report_data` match the variables used in the template.
-3. Look for any error messages during the template rendering process.
-4. Check if the rendered HTML contains the expected content or if it's still showing unrendered tags.
-
-If the issue persists, please provide the log output, and we can further diagnose the problem. It's possible that there might be a mismatch between the variable names in the template and the keys in the `report_data` dictionary, or there could be an issue with how the Jinja2 environment is set up.
+If the issue persists, please share the relevant parts of the log output, particularly any warnings or errors, and the content of the generated report (first and last few lines). This will help us identify whether the problem is with data preparation, template rendering, or possibly an issue with how the rendered content is being saved or sent.
