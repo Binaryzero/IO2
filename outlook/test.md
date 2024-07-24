@@ -1,21 +1,117 @@
-Thank you for providing that information. If the security report is still basically the same as the template with no replacement happening, and we've confirmed that Jinja2 is up to date (version 3.1.2 is recent), we need to investigate further. Let's try a few more troubleshooting steps:
+Thank you for that information. An empty file from the test suggests that there might be a fundamental issue with how Jinja2 is set up or how the template is being loaded. Let's investigate this further with some more targeted tests.
 
-1. First, let's simplify the template to isolate the issue. Create a new, very simple template file called `test_template.html`:
+1. First, let's verify that Python can read and write files correctly in the directory:
 
-```html
-<!DOCTYPE html>
-<html>
-<body>
-    <h1>Test Template</h1>
-    <p>Total vulnerabilities: {{ total_vulnerabilities }}</p>
-    <p>Unique vulnerabilities: {{ unique_vulnerabilities }}</p>
-    <p>Affected hosts: {{ affected_hosts }}</p>
-</body>
-</html>
+```python
+import os
+
+def test_file_io():
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    test_file_path = os.path.join(current_dir, 'test_file.txt')
+    
+    # Write to file
+    try:
+        with open(test_file_path, 'w', encoding='utf-8') as f:
+            f.write("This is a test file.")
+        print(f"Successfully wrote to {test_file_path}")
+    except Exception as e:
+        print(f"Error writing to file: {str(e)}")
+    
+    # Read from file
+    try:
+        with open(test_file_path, 'r', encoding='utf-8') as f:
+            content = f.read()
+        print(f"Successfully read from {test_file_path}")
+        print(f"Content: {content}")
+    except Exception as e:
+        print(f"Error reading from file: {str(e)}")
+    
+    # Clean up
+    os.remove(test_file_path)
+    print("Test file removed.")
+
+if __name__ == "__main__":
+    test_file_io()
 
 ```
 
-2. Now, let's create a simple test function in `report_generation.py` to render this template:
+Run this test to ensure that basic file I/O is working correctly.
+
+2. Next, let's test Jinja2 with a string template instead of a file to isolate any potential file-related issues:
+
+```python
+from jinja2 import Template
+
+def test_jinja2_string():
+    # Create a simple string template
+    template_string = """
+    Hello, {{ name }}!
+    You have {{ num_messages }} messages.
+    """
+    
+    # Create a Jinja2 template
+    template = Template(template_string)
+    
+    # Render the template with some data
+    rendered = template.render(name="Alice", num_messages=5)
+    
+    print("Rendered output:")
+    print(rendered)
+
+if __name__ == "__main__":
+    test_jinja2_string()
+
+```
+
+Run this test to verify that Jinja2 is working correctly with a simple string template.
+
+3. If the string template works, let's try a minimal file-based template:
+
+```python
+from jinja2 import Environment, FileSystemLoader
+import os
+
+def test_minimal_jinja2_file():
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    
+    # Create a minimal test template file
+    test_template_path = os.path.join(current_dir, 'minimal_test_template.html')
+    with open(test_template_path, 'w', encoding='utf-8') as f:
+        f.write("<p>Hello, {{ name }}!</p>")
+    
+    # Set up Jinja2 environment
+    env = Environment(loader=FileSystemLoader(current_dir))
+    
+    try:
+        # Load the template
+        template = env.get_template('minimal_test_template.html')
+        print("Template loaded successfully")
+        
+        # Render the template
+        rendered = template.render(name="World")
+        print("Rendered output:")
+        print(rendered)
+        
+        # Save the rendered output
+        output_path = os.path.join(current_dir, 'minimal_test_output.html')
+        with open(output_path, 'w', encoding='utf-8') as f:
+            f.write(rendered)
+        print(f"Output saved to {output_path}")
+    except Exception as e:
+        print(f"An error occurred: {str(e)}")
+    
+    # Clean up
+    os.remove(test_template_path)
+    print("Test template removed.")
+
+if __name__ == "__main__":
+    test_minimal_jinja2_file()
+
+```
+
+Run this test to check if Jinja2 can correctly load and render a minimal file-based template.
+
+4. Finally, let's add some error checking to the original `test_template_rendering` function:
 
 ```python
 from jinja2 import Environment, FileSystemLoader
@@ -28,8 +124,19 @@ def test_template_rendering():
     # Set up Jinja2 environment
     env = Environment(loader=FileSystemLoader(current_dir))
     
-    # Load the test template
-    template = env.get_template('test_template.html')
+    # Check if the template file exists
+    template_path = os.path.join(current_dir, 'test_template.html')
+    if not os.path.exists(template_path):
+        print(f"Error: Template file not found at {template_path}")
+        return
+    
+    try:
+        # Load the test template
+        template = env.get_template('test_template.html')
+        print("Template loaded successfully")
+    except Exception as e:
+        print(f"Error loading template: {str(e)}")
+        return
     
     # Prepare some test data
     test_data = {
@@ -38,8 +145,13 @@ def test_template_rendering():
         'affected_hosts': 25
     }
     
-    # Render the template
-    rendered_html = template.render(**test_data)
+    try:
+        # Render the template
+        rendered_html = template.render(**test_data)
+        print("Template rendered successfully")
+    except Exception as e:
+        print(f"Error rendering template: {str(e)}")
+        return
     
     # Print the rendered HTML
     print("Rendered HTML:")
@@ -47,116 +159,22 @@ def test_template_rendering():
     
     # Save the rendered HTML to a file
     output_path = os.path.join(current_dir, 'test_output.html')
-    with open(output_path, 'w', encoding='utf-8') as f:
-        f.write(rendered_html)
-    
-    print(f"Test output saved to: {output_path}")
+    try:
+        with open(output_path, 'w', encoding='utf-8') as f:
+            f.write(rendered_html)
+        print(f"Test output saved to: {output_path}")
+    except Exception as e:
+        print(f"Error saving output: {str(e)}")
 
 if __name__ == "__main__":
     test_template_rendering()
 
 ```
 
-3. Run this test function independently:
+Run these tests one by one and observe the output. They should help isolate where the problem is occurring:
 
-```
-python report_generation.py
-```
+1. If the file I/O test fails, there might be permission issues in the directory.
+2. If the string template test works but the file-based tests fail, there might be an issue with how Jinja2 is loading templates from files.
+3. If all tests pass except the original `test_template_rendering`, there might be an issue with the specific template file or how it's being processed.
 
-This should output the rendered HTML and save it to a file. Check if the variables are properly replaced in this simple test case.
-
-4. If the simple test works, let's add more detailed logging to the `prepare_report_data` function:
-
-```python
-import logging
-
-def prepare_report_data(data: List[Dict[str, str]], rd_data: Dict[str, Dict[str, List[Dict[str, str]]]], owner_summary: Dict[str, Dict[str, int]]) -> Dict[str, Any]:
-    logging.info("Starting prepare_report_data function")
-    
-    total_vulnerabilities = len(data)
-    unique_vulnerabilities = len(set((row[COLUMN_TITLE], row[COLUMN_SEVERITY_RISK]) for row in data))
-    affected_hosts = len(set(get_host_or_source(row) for row in data if not is_non_server_vuln(row)))
-    
-    logging.info(f"Total vulnerabilities: {total_vulnerabilities}")
-    logging.info(f"Unique vulnerabilities: {unique_vulnerabilities}")
-    logging.info(f"Affected hosts: {affected_hosts}")
-    
-    # ... (rest of the function)
-    
-    report_data = {
-        'executive_summary': executive_summary,
-        'total_vulnerabilities': total_vulnerabilities,
-        'unique_vulnerabilities': unique_vulnerabilities,
-        'affected_hosts': affected_hosts,
-        'priority_breakdown': priority_breakdown,
-        'most_common_vulnerabilities': most_common_vulnerabilities,
-        'vulnerable_hosts_by_priority': vulnerable_hosts_by_priority,
-        'due_dates_by_priority': due_dates_by_priority,
-        'vulnerabilities_by_app': vulnerabilities_by_app,
-        'owner_deliverables': owner_summary
-    }
-    
-    logging.info("Report data prepared. Keys:")
-    for key, value in report_data.items():
-        logging.info(f"  {key}: {type(value)}")
-        if isinstance(value, (list, dict)):
-            logging.info(f"    Length: {len(value)}")
-    
-    return report_data
-
-```
-
-5. In the `generate_html_report` function, let's add a step to verify that the data is being passed correctly to the template:
-
-```python
-def generate_html_report(data: List[Dict[str, str]], rd_data: Dict[str, Dict[str, List[Dict[str, str]]]], owner_summary: Dict[str, Dict[str, int]]) -> str:
-    # ... (earlier part of the function)
-    
-    # Prepare data for the template
-    report_data = prepare_report_data(data, rd_data, owner_summary)
-    
-    # Verify data before rendering
-    logging.info("Verifying data before rendering:")
-    for key, value in report_data.items():
-        logging.info(f"  {key}: {value[:100] if isinstance(value, str) else value}")
-    
-    # Render the template
-    try:
-        rendered_html = template.render(styles=styles, get_condition_class=get_condition_class, **report_data)
-        logging.info("Successfully rendered the template")
-    except Exception as e:
-        logging.error(f"Error rendering template: {str(e)}")
-        raise
-    
-    # ... (rest of the function)
-
-```
-
-6. Finally, let's add a check in the main script to verify the content of the generated report:
-
-```python
-def main():
-    # ... (earlier part of the function)
-    
-    # Generate HTML report
-    report_html = generate_html_report(vulnerability_data, rd_data, owner_summary)
-    logging.info(f"Generated HTML report, length: {len(report_html)} characters")
-    
-    # Verify report content
-    logging.info("Verifying report content:")
-    logging.info(f"Report starts with: {report_html[:200]}")
-    logging.info(f"Report ends with: {report_html[-200:]}")
-    
-    # Check for unrendered tags
-    if '{{' in report_html or '{%' in report_html:
-        logging.warning("Unrendered Jinja2 tags found in the report")
-        unrendered_tags = re.findall(r'{{.*?}}|{%.*?%}', report_html)
-        logging.warning(f"Unrendered tags: {unrendered_tags[:10]}")  # Show first 10 unrendered tags
-    
-    # ... (rest of the function)
-
-```
-
-After making these changes, run the main script again. The detailed logging should provide more insight into what's happening during the template rendering process. 
-
-If the issue persists, please share the relevant parts of the log output, particularly any warnings or errors, and the content of the generated report (first and last few lines). This will help us identify whether the problem is with data preparation, template rendering, or possibly an issue with how the rendered content is being saved or sent.
+Please run these tests and provide the output. This will help us pinpoint the exact cause of the empty file and why the template isn't being rendered as expected.
