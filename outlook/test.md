@@ -1,15 +1,216 @@
-Thank you for running the tests. If all the tests passed, including the original `test_template_rendering`, it suggests that Jinja2 is working correctly in your environment for both string-based and file-based templates. This is good news, as it narrows down the potential causes of the issue.
-
-Given that the tests are working, but the main report generation is still producing an unrendered template, let's focus on the main report generation process. Here are some steps to isolate and fix the issue:
-
-1. First, let's add some detailed logging to the `generate_html_report` function:
+Certainly! I'll provide you with a complete `report_generation.py` script that incorporates all the changes and improvements we've discussed. This script will include detailed logging and error handling to help identify any issues in the report generation process.
 
 ```python
+"""
+report_generation.py
+
+This module is responsible for generating the HTML report based on the processed vulnerability data.
+It uses Jinja2 for templating to create a more flexible and maintainable report.
+"""
+
 import logging
+from typing import List, Dict, Any
+from collections import Counter
+from datetime import datetime
 from jinja2 import Environment, FileSystemLoader
 import os
+from config import (
+    HTML_TEMPLATE_PATH,
+    CSS_STYLE_PATH,
+    PRIORITY_LEVELS,
+    TOP_VULNERABILITIES_COUNT,
+    TOP_SERVERS_COUNT,
+    DUE_DATE_TIME_FRAMES,
+    COLUMN_TITLE,
+    COLUMN_SEVERITY_RISK,
+    COLUMN_APPLICATION_ID,
+    COLUMN_APPLICATION_FULL_NAME,
+    COLUMN_DUE_DATE,
+    COLUMN_HOST_NAME,
+    COLUMN_SOURCES
+)
+from data_processing import (
+    get_host_or_source,
+    is_non_server_vuln,
+    get_top_vulnerable_hosts,
+    get_due_date_outlook,
+    parse_date
+)
+
+def get_condition_class(condition: str) -> str:
+    """
+    Determine the CSS class for a given condition.
+
+    Args:
+        condition (str): The condition string.
+
+    Returns:
+        str: The corresponding CSS class.
+    """
+    if 'Past Due with No Plan' in condition:
+        return 'priority-critical'
+    elif 'Past Due with Plan' in condition:
+        return 'priority-high'
+    elif 'Due 0 to 10 Days' in condition:
+        return 'priority-medium'
+    else:
+        return ''
+
+def generate_executive_summary(data: List[Dict[str, str]], owner_summary: Dict[str, Dict[str, int]]) -> str:
+    """
+    Generate the executive summary for the security vulnerability report.
+
+    Args:
+        data (List[Dict[str, str]]): List of vulnerability data dictionaries.
+        owner_summary (Dict[str, Dict[str, int]]): Summary of deliverables by owner.
+
+    Returns:
+        str: HTML string containing the executive summary.
+    """
+    logging.info("Generating executive summary")
+    total_vulnerabilities = len(data)
+    unique_vulnerabilities = len(set((row[COLUMN_TITLE], row[COLUMN_SEVERITY_RISK]) for row in data))
+    affected_hosts = len(set(get_host_or_source(row) for row in data if not is_non_server_vuln(row)))
+    priority_count = Counter(row[COLUMN_SEVERITY_RISK] for row in data)
+    
+    today = datetime.now().date()
+    past_due_vulnerabilities = sum(1 for row in data if parse_date(row[COLUMN_DUE_DATE]).date() < today)
+
+    total_deliverables = sum(sum(conditions.values()) for conditions in owner_summary.values())
+    past_due_deliverables = sum(sum(count for cond, count in conditions.items() if 'Past Due' in cond) for conditions in owner_summary.values())
+    
+    summary = f"""
+    <h2>Executive Summary</h2>
+    
+    <p>This report provides an overview of the current security vulnerability landscape within our organization. 
+    Key findings from the analysis are as follows:</p>
+    
+    <ul>
+        <li>Total identified vulnerabilities: <strong>{total_vulnerabilities}</strong></li>
+        <li>Unique vulnerabilities: <strong>{unique_vulnerabilities}</strong></li>
+        <li>Affected hosts/servers: <strong>{affected_hosts}</strong></li>
+        <li>Past due vulnerabilities: <strong class="priority-high">{past_due_vulnerabilities}</strong></li>
+    </ul>
+    
+    <h3>Priority Breakdown:</h3>
+    <ul>
+    """
+    
+    for priority in PRIORITY_LEVELS:
+        count = priority_count[priority]
+        percentage = count / total_vulnerabilities * 100 if total_vulnerabilities > 0 else 0
+        priority_class = priority.lower().replace(' ', '-')
+        summary += f'<li class="{priority_class}">{priority}: <strong>{count}</strong> ({percentage:.1f}%)</li>'
+    
+    summary += f"""
+    </ul>
+    
+    <h3>Deliverable Summary:</h3>
+    <p>There are <strong>{total_deliverables}</strong> total deliverables across all owners.</p>
+    <p><strong class="priority-high">Past Due Deliverables: {past_due_deliverables}</strong></p>
+    
+    <h4>Critical Deliverables:</h4>
+    <table class="summary-table">
+    <tr><th>Owner</th><th>Condition</th><th>Count</th></tr>
+    """
+    
+    for owner, conditions in owner_summary.items():
+        critical_conditions = {cond: count for cond, count in conditions.items() if 'Past Due' in cond or 'Due 0 to 10 Days' in cond}
+        if critical_conditions:
+            for cond, count in critical_conditions.items():
+                condition_class = get_condition_class(cond)
+                summary += f"<tr><td>{owner}</td><td class='{condition_class}'>{cond}</td><td>{count}</td></tr>"
+    
+    summary += """
+    </table>
+    
+    <p>Immediate action is required to address past due and high-priority vulnerabilities and deliverables. 
+    Please refer to the detailed sections below for specific information on vulnerable hosts, 
+    upcoming due dates, and application-specific vulnerabilities.</p>
+    """
+    
+    logging.info("Executive summary generated")
+    return summary
+
+def prepare_report_data(data: List[Dict[str, str]], rd_data: Dict[str, Dict[str, List[Dict[str, str]]]], owner_summary: Dict[str, Dict[str, int]]) -> Dict[str, Any]:
+    """
+    Prepare the data for the Jinja2 template.
+
+    Args:
+        data (List[Dict[str, str]]): List of vulnerability data dictionaries.
+        rd_data (Dict[str, Dict[str, List[Dict[str, str]]]]): Processed application deliverables data.
+        owner_summary (Dict[str, Dict[str, int]]): Summary of deliverables by owner.
+
+    Returns:
+        Dict[str, Any]: A dictionary containing all the data needed for the report template.
+    """
+    logging.info("Preparing report data")
+    total_vulnerabilities = len(data)
+    unique_vulnerabilities = len(set((row[COLUMN_TITLE], row[COLUMN_SEVERITY_RISK]) for row in data))
+    affected_hosts = len(set(get_host_or_source(row) for row in data if not is_non_server_vuln(row)))
+    priority_count = Counter(row[COLUMN_SEVERITY_RISK] for row in data)
+    
+    vulnerability_counter = Counter(row[COLUMN_TITLE] for row in data)
+    most_common_vulnerabilities = vulnerability_counter.most_common(TOP_VULNERABILITIES_COUNT)
+    
+    vulnerable_hosts_by_priority = {
+        priority: get_top_vulnerable_hosts(data, priority, TOP_SERVERS_COUNT)
+        for priority in PRIORITY_LEVELS
+    }
+    
+    due_dates_by_priority = {
+        priority: get_due_date_outlook(data, priority, DUE_DATE_TIME_FRAMES)
+        for priority in PRIORITY_LEVELS
+    }
+    
+    app_id_count = Counter(row[COLUMN_APPLICATION_ID] for row in data)
+    vulnerabilities_by_app = []
+    for app_id, count in app_id_count.most_common():
+        app_name = next((row[COLUMN_APPLICATION_FULL_NAME] for row in data if row[COLUMN_APPLICATION_ID] == app_id), "Unknown")
+        app_data = [row for row in data if row[COLUMN_APPLICATION_ID] == app_id]
+        app_priority_count = Counter(row[COLUMN_SEVERITY_RISK] for row in app_data)
+        vulnerabilities_by_app.append({
+            'name': app_name,
+            'id': app_id,
+            'total': count,
+            'priorities': {priority: app_priority_count[priority] for priority in PRIORITY_LEVELS}
+        })
+    
+    executive_summary = generate_executive_summary(data, owner_summary)
+    
+    report_data = {
+        'executive_summary': executive_summary,
+        'total_vulnerabilities': total_vulnerabilities,
+        'unique_vulnerabilities': unique_vulnerabilities,
+        'affected_hosts': affected_hosts,
+        'priority_breakdown': [(priority, priority_count[priority], priority_count[priority]/total_vulnerabilities if total_vulnerabilities > 0 else 0) for priority in PRIORITY_LEVELS],
+        'most_common_vulnerabilities': most_common_vulnerabilities,
+        'vulnerable_hosts_by_priority': vulnerable_hosts_by_priority,
+        'due_dates_by_priority': due_dates_by_priority,
+        'vulnerabilities_by_app': vulnerabilities_by_app,
+        'owner_deliverables': owner_summary
+    }
+    
+    logging.info("Prepared report data with the following keys:")
+    for key, value in report_data.items():
+        logging.info(f"  - {key}: {type(value)}")
+        if isinstance(value, (list, dict)):
+            logging.info(f"    Length: {len(value)}")
+    
+    return report_data
 
 def generate_html_report(data: List[Dict[str, str]], rd_data: Dict[str, Dict[str, List[Dict[str, str]]]], owner_summary: Dict[str, Dict[str, int]]) -> str:
+    """
+    Generate the complete HTML report using Jinja2 templating.
+
+    Args:
+        data (List[Dict[str, str]]): List of vulnerability data dictionaries.
+        rd_data (Dict[str, Dict[str, List[Dict[str, str]]]]): Processed application deliverables data.
+        owner_summary (Dict[str, Dict[str, int]]): Summary of deliverables by owner.
+
+    Returns:
+        str: Complete HTML report as a string.
+    """
     logging.info("Starting generate_html_report function")
     
     # Get the directory of the current script
@@ -48,11 +249,6 @@ def generate_html_report(data: List[Dict[str, str]], rd_data: Dict[str, Dict[str
     report_data = prepare_report_data(data, rd_data, owner_summary)
     logging.info("Report data prepared")
     
-    # Log keys in report_data
-    logging.info("Keys in report_data:")
-    for key in report_data.keys():
-        logging.info(f"  - {key}")
-    
     # Render the template
     try:
         rendered_html = template.render(styles=styles, get_condition_class=get_condition_class, **report_data)
@@ -65,99 +261,37 @@ def generate_html_report(data: List[Dict[str, str]], rd_data: Dict[str, Dict[str
     
     return rendered_html
 
-```
-
-2. Update the main script to use this detailed logging:
-
-```python
-import logging
-from config import *
-from data_processing import read_csv_data, process_rd_csv
-from report_generation import generate_html_report
-from email_sender import send_outlook_email
-
-def main():
+if __name__ == "__main__":
     # Set up logging
     logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
     
-    logging.info("Starting the report generation process")
+    # Add any testing or debugging code here
+    logging.info("Running report_generation.py directly")
     
-    try:
-        # Read vulnerability data
-        vulnerability_data = read_csv_data(CSV_FILE_PATH)
-        logging.info(f"Read {len(vulnerability_data)} vulnerability records")
-        
-        # Read and process application deliverables data
-        rd_data, owner_summary = process_rd_csv(RD_CSV_FILE_PATH)
-        logging.info(f"Processed application deliverables data: {len(rd_data)} applications, {len(owner_summary)} owners")
-        
-        # Generate HTML report
-        report_html = generate_html_report(vulnerability_data, rd_data, owner_summary)
-        logging.info(f"Generated HTML report, length: {len(report_html)} characters")
-        
-        # Check for unrendered tags
-        if '{{' in report_html or '{%' in report_html:
-            logging.warning("Unrendered Jinja2 tags found in the report")
-            # Log the first few unrendered tags
-            unrendered_tags = re.findall(r'{{.*?}}|{%.*?%}', report_html[:1000])  # Check first 1000 characters
-            logging.warning(f"First few unrendered tags: {unrendered_tags}")
-        
-        # Save report to file
-        with open(OUTPUT_REPORT_PATH, 'w', encoding='utf-8') as f:
-            f.write(report_html)
-        logging.info(f"Saved report to {OUTPUT_REPORT_PATH}")
-        
-        # Send email
-        send_outlook_email(EMAIL_SUBJECT, report_html, EMAIL_RECIPIENTS)
-        logging.info("Email sent successfully")
-    
-    except Exception as e:
-        logging.error(f"An error occurred: {str(e)}", exc_info=True)
-    
-    logging.info("Process completed.")
-
-if __name__ == "__main__":
-    main()
+    # You can add test data and call functions here for debugging
+    # For example:
+    # test_data = [...]  # Add some test data
+    # test_rd_data = {...}  # Add some test rd_data
+    # test_owner_summary = {...}  # Add some test owner_summary
+    # test_report = generate_html_report(test_data, test_rd_data, test_owner_summary)
+    # print(test_report[:1000])  # Print the first 1000 characters of the test report
 
 ```
 
-3. Run the main script with this detailed logging and observe the output. Pay special attention to:
-   - Whether the template file is found and loaded successfully
-   - The keys present in `report_data`
-   - The length of the rendered HTML
-   - Any unrendered Jinja2 tags in the output
+This script includes:
 
-4. If the logging shows that the template is loaded and rendered successfully, but the output still contains unrendered tags, there might be an issue with how the template is structured. In this case, please provide the first few lines of your actual template file (the one specified by `HTML_TEMPLATE_PATH`).
+1. Detailed logging throughout the process.
+2. Error handling for file operations and template rendering.
+3. A complete implementation of `generate_executive_summary`, `prepare_report_data`, and `generate_html_report` functions.
+4. Type hints for better code readability and maintainability.
+5. A section at the end for running tests or debugging when the script is run directly.
 
-5. Also, check the `prepare_report_data` function to ensure it's returning all the expected keys. You can add logging there as well:
+To use this script:
 
-```python
-def prepare_report_data(data: List[Dict[str, str]], rd_data: Dict[str, Dict[str, List[Dict[str, str]]]], owner_summary: Dict[str, Dict[str, int]]) -> Dict[str, Any]:
-    logging.info("Starting prepare_report_data function")
-    
-    # ... (existing code) ...
-    
-    report_data = {
-        'executive_summary': executive_summary,
-        'total_vulnerabilities': total_vulnerabilities,
-        'unique_vulnerabilities': unique_vulnerabilities,
-        'affected_hosts': affected_hosts,
-        'priority_breakdown': priority_breakdown,
-        'most_common_vulnerabilities': most_common_vulnerabilities,
-        'vulnerable_hosts_by_priority': vulnerable_hosts_by_priority,
-        'due_dates_by_priority': due_dates_by_priority,
-        'vulnerabilities_by_app': vulnerabilities_by_app,
-        'owner_deliverables': owner_summary
-    }
-    
-    logging.info("Prepared report data with the following keys:")
-    for key, value in report_data.items():
-        logging.info(f"  - {key}: {type(value)}")
-        if isinstance(value, (list, dict)):
-            logging.info(f"    Length: {len(value)}")
-    
-    return report_data
+1. Ensure that all the imported modules and config variables are correctly set up in your project.
+2. Make sure the Jinja2 template file (HTML_TEMPLATE_PATH) and CSS file (CSS_STYLE_PATH) exist in the correct locations.
+3. Call the `generate_html_report` function from your main script, passing in the necessary data.
 
-```
+If you're still experiencing issues with the report generation, you can run this script directly (python report_generation.py) after adding some test data at the bottom. This will help isolate any problems specific to the report generation process.
 
-After making these changes, run the main script again and provide the relevant parts of the log output. This will help us identify exactly where the process is breaking down and why the template isn't being rendered as expected in the main report generation, despite the tests passing.
+Let me know if you need any clarification on any part of this script or if you're still encountering issues when generating the report.
