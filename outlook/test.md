@@ -1,3 +1,8 @@
+I apologize for the oversight. You're absolutely right; we're missing the 'app_deliverables' key in the template.format() call. Let's correct this error by updating the `generate_html_report` function once more.
+
+
+
+```python
 def generate_html_report(data, rd_data, owner_summary, report_type='both'):
     with open(HTML_TEMPLATE_PATH, 'r') as f:
         template = f.read()
@@ -91,3 +96,19 @@ def generate_html_report(data, rd_data, owner_summary, report_type='both'):
 #
 # Note: Make sure your HTML template (report_template.html) has placeholders for all these variables,
 # including {app_deliverables}. If any placeholders are missing, add them where appropriate in your template.
+
+```
+
+In this updated version of the `generate_html_report` function, I've made the following changes:
+
+1. Added `app_deliverables` to the list of variables initialized at the beginning of the function.
+2. Generated content for `app_deliverables` using the `generate_owner_deliverables_html` function when the report type includes deliverables.
+3. Included `app_deliverables` in the `template.format()` call.
+
+These changes should resolve the KeyError for 'app_deliverables' and ensure that all generated content is properly passed to the HTML template.
+
+To ensure everything works correctly, please check that your HTML template (`report_template.html`) has a placeholder for `{app_deliverables}`. If this placeholder is missing in your template, you'll need to add it where appropriate.
+
+Also, note that in this implementation, `app_deliverables` and `deliverable_details` contain the same content. If you want them to be different, you may need to create a separate function to generate content specifically for `app_deliverables`.
+
+Is there anything else you'd like me to modify or explain further about this update?
