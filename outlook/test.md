@@ -1,182 +1,160 @@
-Certainly! Adding the priority to the Exceptions and Acceptable Use items will provide more detailed information in the report. We'll need to modify several functions to include this information. Let's update the relevant parts of the code.
+Certainly! Let's modify the code to allow the user to choose whether they want to generate a report for vulnerabilities, deliverables, or both. We'll update the `generate_html_report` function and add a new parameter to control this behavior. We'll also need to modify the `main.py` file to accommodate this new option.
+
+First, let's update the `report_generation.py` file:
 
 
 
 ```python
-from collections import Counter, defaultdict
-from datetime import datetime
-from config import *
-from data_processing import get_host_or_source, is_non_server_vuln, get_top_vulnerable_hosts, get_due_date_outlook, parse_date
+# ... (previous imports and functions remain the same)
 
-# ... (previous functions remain the same)
+def generate_html_report(data, rd_data, owner_summary, report_type='both'):
+    with open(HTML_TEMPLATE_PATH, 'r') as f:
+        template = f.read()
+    
+    with open(CSS_STYLE_PATH, 'r') as f:
+        styles = f.read()
+    
+    executive_summary = ""
+    vulnerability_details = ""
+    deliverable_details = ""
 
-def generate_vulnerability_summary(data):
-    total_vulnerabilities = len(data)
-    unique_vulnerabilities = len(set((row[COLUMN_TITLE], row[COLUMN_SEVERITY_RISK]) for row in data))
-    affected_hosts = len(set(get_host_or_source(row) for row in data if not is_non_server_vuln(row)))
-    priority_count = Counter(row[COLUMN_SEVERITY_RISK] for row in data)
-    
-    today = datetime.now().date()
-    past_due_vulnerabilities = sum(1 for row in data 
-                                   if parse_date(row[COLUMN_DUE_DATE]).date() < today 
-                                   and row[COLUMN_ERP_SCORECARD_STATUS] not in [ERP_EXCEPTION, ERP_ACCEPTABLE_USE])
-    
-    exceptions = Counter((row[COLUMN_SEVERITY_RISK], row[COLUMN_ERP_SCORECARD_STATUS]) 
-                         for row in data if row[COLUMN_ERP_SCORECARD_STATUS] == ERP_EXCEPTION)
-    acceptable_use = Counter((row[COLUMN_SEVERITY_RISK], row[COLUMN_ERP_SCORECARD_STATUS]) 
-                             for row in data if row[COLUMN_ERP_SCORECARD_STATUS] == ERP_ACCEPTABLE_USE)
-
-    summary = f"""
-    <h3>Vulnerability Summary:</h3>
-    <p>This report covers {total_vulnerabilities} total vulnerabilities, including {unique_vulnerabilities} unique vulnerabilities across {affected_hosts} hosts/sources.</p>
-    <p><strong class="priority-high">Past Due Vulnerabilities: {past_due_vulnerabilities}</strong></p>
-    
-    <h4>Exceptions and Acceptable Use by Priority:</h4>
-    <table class="summary-table">
-    <tr><th>Priority</th><th>Exceptions</th><th>Acceptable Use</th></tr>
-    """
-    
-    for priority in PRIORITY_LEVELS:
-        exception_count = exceptions[(priority, ERP_EXCEPTION)]
-        acceptable_use_count = acceptable_use[(priority, ERP_ACCEPTABLE_USE)]
-        class_name = 'priority-high' if priority == PRIORITY_LEVELS[0] else ('priority-medium' if priority == PRIORITY_LEVELS[1] else 'priority-low')
-        summary += f'<tr class="{class_name}"><td>{priority}</td><td>{exception_count}</td><td>{acceptable_use_count}</td></tr>'
-    
-    summary += f"""
-    </table>
-    <p><strong class="priority-medium">Total Exceptions: {sum(exceptions.values())}</strong></p>
-    <p><strong class="priority-low">Total Acceptable Use: {sum(acceptable_use.values())}</strong></p>
-    
-    <h4>Vulnerabilities by Priority:</h4>
-    <table class="summary-table">
-    <tr><th>Priority</th><th>Count</th><th>Percentage</th></tr>
-    """
-    
-    for priority in PRIORITY_LEVELS:
-        count = priority_count[priority]
-        class_name = 'priority-high' if priority == PRIORITY_LEVELS[0] else ('priority-medium' if priority == PRIORITY_LEVELS[1] else 'priority-low')
-        summary += f'<tr class="{class_name}"><td>{priority}</td><td>{count}</td><td>{count/total_vulnerabilities:.1%}</td></tr>'
-    
-    summary += "</table>"
-    return summary
-
-def generate_top_applications_summary(data):
-    app_id_count = Counter(row[COLUMN_APPLICATION_ID] for row in data)
-    top_app_ids = app_id_count.most_common(TOP_APP_IDS_COUNT)
-    
-    summary = """
-    <h4>Top Applications by vulnerability count:</h4>
-    <table class="summary-table">
-    <tr><th>Application</th><th>Vulnerability Count</th><th>Priority Breakdown</th><th>Exceptions</th><th>Acceptable Use</th></tr>
-    """
-    
-    for app_id, count in top_app_ids:
-        app_name = next((row[COLUMN_APPLICATION_FULL_NAME] for row in data if row[COLUMN_APPLICATION_ID] == app_id), "Unknown")
-        app_data = [row for row in data if row[COLUMN_APPLICATION_ID] == app_id]
-        app_priority_count = Counter(row[COLUMN_SEVERITY_RISK] for row in app_data)
-        priority_breakdown = " | ".join(f'<span class="{class_name}">{priority}: {app_priority_count[priority]}</span>' 
-                                        for priority, class_name in zip(PRIORITY_LEVELS, ['priority-high', 'priority-medium', 'priority-low']))
+    if report_type in ['vulnerabilities', 'both']:
+        total_vulnerabilities = len(data)
+        unique_vulnerabilities = len(set((row[COLUMN_TITLE], row[COLUMN_SEVERITY_RISK]) for row in data))
+        affected_hosts = len(set(get_host_or_source(row) for row in data if not is_non_server_vuln(row)))
+        priority_count = Counter(row[COLUMN_SEVERITY_RISK] for row in data)
         
-        app_exceptions = Counter((row[COLUMN_SEVERITY_RISK], row[COLUMN_ERP_SCORECARD_STATUS]) 
-                                 for row in app_data if row[COLUMN_ERP_SCORECARD_STATUS] == ERP_EXCEPTION)
-        app_acceptable_use = Counter((row[COLUMN_SEVERITY_RISK], row[COLUMN_ERP_SCORECARD_STATUS]) 
-                                     for row in app_data if row[COLUMN_ERP_SCORECARD_STATUS] == ERP_ACCEPTABLE_USE)
+        vulnerability_counter = Counter(row[COLUMN_TITLE] for row in data)
+        most_common_vulnerabilities = generate_html_list(vulnerability_counter.most_common(TOP_VULNERABILITIES_COUNT))
         
-        exceptions_breakdown = " | ".join(f'<span class="{class_name}">{priority}: {app_exceptions[(priority, ERP_EXCEPTION)]}</span>' 
-                                          for priority, class_name in zip(PRIORITY_LEVELS, ['priority-high', 'priority-medium', 'priority-low']))
-        acceptable_use_breakdown = " | ".join(f'<span class="{class_name}">{priority}: {app_acceptable_use[(priority, ERP_ACCEPTABLE_USE)]}</span>' 
-                                              for priority, class_name in zip(PRIORITY_LEVELS, ['priority-high', 'priority-medium', 'priority-low']))
-        
-        summary += f"""<tr>
-            <td>{app_name} (ID: {app_id})</td>
-            <td>{count}</td>
-            <td>{priority_breakdown}</td>
-            <td>{exceptions_breakdown}</td>
-            <td>{acceptable_use_breakdown}</td>
-        </tr>"""
-    
-    summary += "</table>"
-    return summary
+        vulnerable_hosts_by_priority = generate_vulnerable_hosts_summary(data)
+        due_dates_by_priority = generate_due_dates_summary(data)
+        vulnerabilities_by_app = generate_vulnerabilities_by_app(data)
 
-def generate_due_dates_summary(data):
-    due_dates_by_priority = ""
-    for priority, class_name in zip(PRIORITY_LEVELS, ['priority-high', 'priority-medium', 'priority-low']):
-        due_date_outlook = get_due_date_outlook(data, priority, DUE_DATE_TIME_FRAMES)
-        due_dates_by_priority += f'<h4 class="{class_name}">{priority}</h4>'
-        if sum(count for count, _ in due_date_outlook.values()) > 0:
-            due_dates_by_priority += '<table class="summary-table"><tr><th>Outlook</th><th>Vulnerabilities</th><th>Percentage</th></tr>'
-            if 'past_due' in due_date_outlook:
-                due_dates_by_priority += f'<tr class="priority-high"><td>Past Due</td><td>{due_date_outlook["past_due"][0]}</td><td>{due_date_outlook["past_due"][1]:.1%}</td></tr>'
-            if 'due_today' in due_date_outlook:
-                due_dates_by_priority += f'<tr class="priority-high"><td>Due Today</td><td>{due_date_outlook["due_today"][0]}</td><td>{due_date_outlook["due_today"][1]:.1%}</td></tr>'
-            for days, (count, percentage) in due_date_outlook.items():
-                if days in DUE_DATE_TIME_FRAMES:
-                    due_dates_by_priority += f'<tr><td>Next {days} days</td><td>{count}</td><td>{percentage:.1%}</td></tr>'
-            
-            if 'exceptions' in due_date_outlook:
-                due_dates_by_priority += f'<tr class="priority-medium"><td>Exceptions</td><td>{due_date_outlook["exceptions"][0]}</td><td>{due_date_outlook["exceptions"][1]:.1%}</td></tr>'
-            if 'acceptable_use' in due_date_outlook:
-                due_dates_by_priority += f'<tr class="priority-low"><td>Acceptable Use</td><td>{due_date_outlook["acceptable_use"][0]}</td><td>{due_date_outlook["acceptable_use"][1]:.1%}</td></tr>'
-            
-            due_dates_by_priority += "</table>"
-        else:
-            due_dates_by_priority += "<p>No vulnerabilities found for this priority.</p>"
-    return due_dates_by_priority
+        executive_summary += generate_vulnerability_summary(data)
+        executive_summary += generate_top_applications_summary(data)
 
-def generate_vulnerabilities_by_app(data):
-    app_id_count = Counter(row[COLUMN_APPLICATION_ID] for row in data)
-    vulnerabilities_by_app = ""
-    for app_id, count in app_id_count.most_common():
-        app_name = next((row[COLUMN_APPLICATION_FULL_NAME] for row in data if row[COLUMN_APPLICATION_ID] == app_id), "Unknown")
-        vulnerabilities_by_app += f"<h4>{app_name} (ID: {app_id})</h4>"
-        vulnerabilities_by_app += f"<p>Total vulnerabilities: {count}</p>"
-        app_data = [row for row in data if row[COLUMN_APPLICATION_ID] == app_id]
-        app_priority_count = Counter(row[COLUMN_SEVERITY_RISK] for row in app_data)
-        app_exceptions = Counter((row[COLUMN_SEVERITY_RISK], row[COLUMN_ERP_SCORECARD_STATUS]) 
-                                 for row in app_data if row[COLUMN_ERP_SCORECARD_STATUS] == ERP_EXCEPTION)
-        app_acceptable_use = Counter((row[COLUMN_SEVERITY_RISK], row[COLUMN_ERP_SCORECARD_STATUS]) 
-                                     for row in app_data if row[COLUMN_ERP_SCORECARD_STATUS] == ERP_ACCEPTABLE_USE)
-        vulnerabilities_by_app += "<ul>"
-        for priority, class_name in zip(PRIORITY_LEVELS, ['priority-high', 'priority-medium', 'priority-low']):
-            vulnerabilities_by_app += f'<li class="{class_name}">{priority}: {app_priority_count[priority]}</li>'
-        vulnerabilities_by_app += "</ul>"
-        vulnerabilities_by_app += "<h5>Exceptions:</h5><ul>"
-        for priority, class_name in zip(PRIORITY_LEVELS, ['priority-high', 'priority-medium', 'priority-low']):
-            vulnerabilities_by_app += f'<li class="{class_name}">{priority}: {app_exceptions[(priority, ERP_EXCEPTION)]}</li>'
-        vulnerabilities_by_app += "</ul>"
-        vulnerabilities_by_app += "<h5>Acceptable Use:</h5><ul>"
-        for priority, class_name in zip(PRIORITY_LEVELS, ['priority-high', 'priority-medium', 'priority-low']):
-            vulnerabilities_by_app += f'<li class="{class_name}">{priority}: {app_acceptable_use[(priority, ERP_ACCEPTABLE_USE)]}</li>'
-        vulnerabilities_by_app += "</ul>"
-    return vulnerabilities_by_app
+        vulnerability_details = f"""
+        <h2>Vulnerability Details</h2>
+        <h3>Most Common Vulnerabilities</h3>
+        {most_common_vulnerabilities}
+        <h3>Vulnerable Hosts by Priority</h3>
+        {vulnerable_hosts_by_priority}
+        <h3>Due Dates by Priority</h3>
+        {due_dates_by_priority}
+        <h3>Vulnerabilities by Application</h3>
+        {vulnerabilities_by_app}
+        """
 
-# ... (rest of the code remains the same)
+    if report_type in ['deliverables', 'both']:
+        executive_summary = generate_deliverable_summary(owner_summary) + executive_summary
+        deliverable_details = generate_owner_deliverables_html(owner_summary)
 
-# The report generation has been updated to include priority information for Exceptions and Acceptable Use items.
+    if report_type == 'both':
+        report_title = "Security Vulnerability and Deliverable Summary Report"
+    elif report_type == 'vulnerabilities':
+        report_title = "Security Vulnerability Summary Report"
+    else:
+        report_title = "Security Deliverable Summary Report"
+
+    return template.format(
+        styles=styles,
+        report_title=report_title,
+        executive_summary=executive_summary,
+        vulnerability_details=vulnerability_details,
+        deliverable_details=deliverable_details
+    )
+
+# The report generation now includes an option to generate reports for vulnerabilities, deliverables, or both.
 # Key changes:
-# 1. In the vulnerability summary, we now show Exceptions and Acceptable Use counts by priority.
-# 2. In the top applications summary, we've added detailed breakdowns of Exceptions and Acceptable Use by priority for each application.
-# 3. In the vulnerabilities by app section, we now show Exceptions and Acceptable Use counts by priority for each application.
+# 1. Added a 'report_type' parameter to control what type of report to generate.
+# 2. Conditional generation of report sections based on the report_type.
+# 3. Dynamic report title based on the report_type.
+# 4. Separate sections for vulnerability details and deliverable details.
 #
-# These changes provide more granular information about the nature of exceptions and acceptable use cases,
-# allowing for better understanding and decision-making based on the severity of the vulnerabilities involved.
+# To use this new functionality, update the main.py file to pass the desired report_type to generate_html_report.
 
 ```
 
-This updated version of the report generation code now includes priority information for Exceptions and Acceptable Use items throughout the report. Here's a summary of the key changes:
+Now, let's update the `main.py` file to accommodate this new option:
 
-1. In the `generate_vulnerability_summary` function:
-   - We now use a Counter to track Exceptions and Acceptable Use cases by priority.
-   - A new table is added to show Exceptions and Acceptable Use counts for each priority level.
 
-2. In the `generate_top_applications_summary` function:
-   - The table now includes detailed breakdowns of Exceptions and Acceptable Use by priority for each application.
 
-3. In the `generate_vulnerabilities_by_app` function:
-   - We've added separate sections for Exceptions and Acceptable Use, showing counts by priority for each application.
+```python
+import argparse
+from config import *
+from data_processing import read_csv_data, process_rd_csv
+from report_generation import generate_html_report
+from email_sender import send_outlook_email
 
-These changes provide more detailed information about the nature of exceptions and acceptable use cases, allowing for better understanding and decision-making based on the severity of the vulnerabilities involved.
+def main():
+    # Set up command-line argument parser
+    parser = argparse.ArgumentParser(description="Generate and send security report.")
+    parser.add_argument('--report-type', choices=['vulnerabilities', 'deliverables', 'both'], 
+                        default='both', help="Type of report to generate")
+    args = parser.parse_args()
 
-The `generate_due_dates_summary` function was left unchanged as it already provided information by priority. However, if you want to add more detail to this section as well, we could modify it to show a breakdown of exceptions and acceptable use cases for each time frame.
+    # Read vulnerability data
+    vulnerability_data = read_csv_data(CSV_FILE_PATH)
+    
+    # Read and process application deliverables data
+    rd_data, owner_summary = process_rd_csv(RD_CSV_FILE_PATH)
+    
+    # Generate HTML report
+    report_html = generate_html_report(vulnerability_data, rd_data, owner_summary, args.report_type)
+    
+    # Save report to file
+    with open(OUTPUT_REPORT_PATH, 'w', encoding='utf-8') as f:
+        f.write(report_html)
+    
+    # Send email
+    try:
+        send_outlook_email(EMAIL_SUBJECT, report_html, EMAIL_RECIPIENTS)
+        print(f"{args.report_type.capitalize()} report sent successfully via Outlook!")
+    except Exception as e:
+        print(f"An error occurred while sending the email: {str(e)}")
+        print(f"The {args.report_type} report has been saved as '{OUTPUT_REPORT_PATH}' in the current directory.")
 
-Is there anything specific you'd like to modify or add to this updated report structure?
+    print("Process completed.")
+
+if __name__ == "__main__":
+    main()
+
+# The main script has been updated to accept a command-line argument for the report type.
+# Key changes:
+# 1. Added argparse to handle command-line arguments.
+# 2. New --report-type argument to specify which type of report to generate.
+# 3. Pass the report_type to the generate_html_report function.
+# 4. Updated print statements to reflect the chosen report type.
+#
+# To run the script for a specific report type, use:
+# python main.py --report-type vulnerabilities
+# python main.py --report-type deliverables
+# python main.py --report-type both
+# If no argument is provided, it defaults to 'both'.
+
+```
+
+These changes allow the user to choose which type of report they want to generate and send. Here's a summary of the modifications:
+
+1. In `report_generation.py`:
+   - Added a `report_type` parameter to `generate_html_report` function.
+   - Conditionally generate different parts of the report based on the `report_type`.
+   - Created separate sections for vulnerability details and deliverable details.
+   - Dynamically set the report title based on the `report_type`.
+
+2. In `main.py`:
+   - Added command-line argument parsing using `argparse`.
+   - Introduced a new `--report-type` argument to specify which report to generate.
+   - Pass the `report_type` to the `generate_html_report` function.
+   - Updated print statements to reflect the chosen report type.
+
+To use this new functionality, you can run the script with the following commands:
+
+- For vulnerabilities only: `python main.py --report-type vulnerabilities`
+- For deliverables only: `python main.py --report-type deliverables`
+- For both (default): `python main.py --report-type both` or simply `python main.py`
+
+This implementation provides flexibility for users to generate different types of reports as needed, while still maintaining the option to generate a comprehensive report covering both vulnerabilities and deliverables.
+
+Is there anything else you'd like me to modify or explain further?
