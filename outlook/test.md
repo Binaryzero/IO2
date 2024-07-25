@@ -5,8 +5,6 @@ First, let's update the `report_generation.py` file:
 
 
 ```python
-# ... (previous imports and functions remain the same)
-
 def generate_html_report(data, rd_data, owner_summary, report_type='both'):
     with open(HTML_TEMPLATE_PATH, 'r') as f:
         template = f.read()
@@ -17,6 +15,11 @@ def generate_html_report(data, rd_data, owner_summary, report_type='both'):
     executive_summary = ""
     vulnerability_details = ""
     deliverable_details = ""
+    total_vulnerabilities = 0
+    unique_vulnerabilities = 0
+    affected_hosts = 0
+    priority_count = Counter()
+    most_common_vulnerabilities = ""
 
     if report_type in ['vulnerabilities', 'both']:
         total_vulnerabilities = len(data)
@@ -61,19 +64,29 @@ def generate_html_report(data, rd_data, owner_summary, report_type='both'):
         styles=styles,
         report_title=report_title,
         executive_summary=executive_summary,
+        total_vulnerabilities=total_vulnerabilities,
+        unique_vulnerabilities=unique_vulnerabilities,
+        affected_hosts=affected_hosts,
+        priority_1_count=priority_count.get(PRIORITY_LEVELS[0], 0),
+        priority_1_percentage=(priority_count.get(PRIORITY_LEVELS[0], 0) / total_vulnerabilities if total_vulnerabilities else 0),
+        priority_2_count=priority_count.get(PRIORITY_LEVELS[1], 0),
+        priority_2_percentage=(priority_count.get(PRIORITY_LEVELS[1], 0) / total_vulnerabilities if total_vulnerabilities else 0),
+        priority_3_count=priority_count.get(PRIORITY_LEVELS[2], 0),
+        priority_3_percentage=(priority_count.get(PRIORITY_LEVELS[2], 0) / total_vulnerabilities if total_vulnerabilities else 0),
+        most_common_vulnerabilities=most_common_vulnerabilities,
         vulnerability_details=vulnerability_details,
         deliverable_details=deliverable_details
     )
 
-# The report generation now includes an option to generate reports for vulnerabilities, deliverables, or both.
+# The generate_html_report function has been updated to include all necessary information in the template.format() call.
 # Key changes:
-# 1. Added a 'report_type' parameter to control what type of report to generate.
-# 2. Conditional generation of report sections based on the report_type.
-# 3. Dynamic report title based on the report_type.
-# 4. Separate sections for vulnerability details and deliverable details.
-#
-# To use this new functionality, update the main.py file to pass the desired report_type to generate_html_report.
-
+# 1. Added missing fields such as priority counts and percentages.
+# 2. Included most_common_vulnerabilities in the template formatting.
+# 3. Ensured that all variables are initialized, even when certain report types are not selected.
+# 4. Used .get() method with default values for priority counts to avoid KeyError if a priority level is not present.
+# 
+# This update ensures that the HTML template receives all the required information, regardless of the chosen report type.
+# The function is now more robust and can handle different report types without errors.
 ```
 
 Now, let's update the `main.py` file to accommodate this new option:
