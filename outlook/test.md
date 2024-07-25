@@ -1,3 +1,8 @@
+I apologize for the oversight. You're right, we're missing the 'vulnerable_hosts_by_priority' in the template.format() call. Let's fix this error by adding the missing variable to the format call. We'll update the `generate_html_report` function once again to include this.
+
+
+
+```python
 def generate_html_report(data, rd_data, owner_summary, report_type='both'):
     with open(HTML_TEMPLATE_PATH, 'r') as f:
         template = f.read()
@@ -85,3 +90,23 @@ def generate_html_report(data, rd_data, owner_summary, report_type='both'):
 # 
 # This update resolves the KeyError for 'vulnerable_hosts_by_priority' and ensures that all generated content
 # is properly passed to the HTML template.
+
+```
+
+In this updated version of the `generate_html_report` function, I've made the following changes:
+
+1. Added `vulnerable_hosts_by_priority` to the list of variables initialized at the beginning of the function.
+2. Included `vulnerable_hosts_by_priority` in the `template.format()` call.
+3. Also added `due_dates_by_priority` and `vulnerabilities_by_app` to the `template.format()` call to ensure all generated content is passed to the template.
+
+These changes should resolve the KeyError for 'vulnerable_hosts_by_priority' and ensure that all generated content is properly passed to the HTML template.
+
+To make sure everything works correctly, please check that your HTML template (`report_template.html`) has placeholders for all these variables:
+
+- `{vulnerable_hosts_by_priority}`
+- `{due_dates_by_priority}`
+- `{vulnerabilities_by_app}`
+
+If any of these placeholders are missing in your template, you'll need to add them where appropriate.
+
+Is there anything else you'd like me to modify or explain further about this update?
