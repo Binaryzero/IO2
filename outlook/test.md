@@ -1,10 +1,3 @@
-Certainly! Let's modify the code to allow the user to choose whether they want to generate a report for vulnerabilities, deliverables, or both. We'll update the `generate_html_report` function and add a new parameter to control this behavior. We'll also need to modify the `main.py` file to accommodate this new option.
-
-First, let's update the `report_generation.py` file:
-
-
-
-```python
 def generate_html_report(data, rd_data, owner_summary, report_type='both'):
     with open(HTML_TEMPLATE_PATH, 'r') as f:
         template = f.read()
@@ -20,6 +13,9 @@ def generate_html_report(data, rd_data, owner_summary, report_type='both'):
     affected_hosts = 0
     priority_count = Counter()
     most_common_vulnerabilities = ""
+    vulnerable_hosts_by_priority = ""
+    due_dates_by_priority = ""
+    vulnerabilities_by_app = ""
 
     if report_type in ['vulnerabilities', 'both']:
         total_vulnerabilities = len(data)
@@ -74,100 +70,18 @@ def generate_html_report(data, rd_data, owner_summary, report_type='both'):
         priority_3_count=priority_count.get(PRIORITY_LEVELS[2], 0),
         priority_3_percentage=(priority_count.get(PRIORITY_LEVELS[2], 0) / total_vulnerabilities if total_vulnerabilities else 0),
         most_common_vulnerabilities=most_common_vulnerabilities,
+        vulnerable_hosts_by_priority=vulnerable_hosts_by_priority,
+        due_dates_by_priority=due_dates_by_priority,
+        vulnerabilities_by_app=vulnerabilities_by_app,
         vulnerability_details=vulnerability_details,
         deliverable_details=deliverable_details
     )
 
-# The generate_html_report function has been updated to include all necessary information in the template.format() call.
+# The generate_html_report function has been updated to include 'vulnerable_hosts_by_priority' in the template.format() call.
 # Key changes:
-# 1. Added missing fields such as priority counts and percentages.
-# 2. Included most_common_vulnerabilities in the template formatting.
-# 3. Ensured that all variables are initialized, even when certain report types are not selected.
-# 4. Used .get() method with default values for priority counts to avoid KeyError if a priority level is not present.
+# 1. Added 'vulnerable_hosts_by_priority' to the list of variables initialized at the beginning of the function.
+# 2. Included 'vulnerable_hosts_by_priority' in the template.format() call.
+# 3. Also added 'due_dates_by_priority' and 'vulnerabilities_by_app' to ensure all generated content is passed to the template.
 # 
-# This update ensures that the HTML template receives all the required information, regardless of the chosen report type.
-# The function is now more robust and can handle different report types without errors.
-```
-
-Now, let's update the `main.py` file to accommodate this new option:
-
-
-
-```python
-import argparse
-from config import *
-from data_processing import read_csv_data, process_rd_csv
-from report_generation import generate_html_report
-from email_sender import send_outlook_email
-
-def main():
-    # Set up command-line argument parser
-    parser = argparse.ArgumentParser(description="Generate and send security report.")
-    parser.add_argument('--report-type', choices=['vulnerabilities', 'deliverables', 'both'], 
-                        default='both', help="Type of report to generate")
-    args = parser.parse_args()
-
-    # Read vulnerability data
-    vulnerability_data = read_csv_data(CSV_FILE_PATH)
-    
-    # Read and process application deliverables data
-    rd_data, owner_summary = process_rd_csv(RD_CSV_FILE_PATH)
-    
-    # Generate HTML report
-    report_html = generate_html_report(vulnerability_data, rd_data, owner_summary, args.report_type)
-    
-    # Save report to file
-    with open(OUTPUT_REPORT_PATH, 'w', encoding='utf-8') as f:
-        f.write(report_html)
-    
-    # Send email
-    try:
-        send_outlook_email(EMAIL_SUBJECT, report_html, EMAIL_RECIPIENTS)
-        print(f"{args.report_type.capitalize()} report sent successfully via Outlook!")
-    except Exception as e:
-        print(f"An error occurred while sending the email: {str(e)}")
-        print(f"The {args.report_type} report has been saved as '{OUTPUT_REPORT_PATH}' in the current directory.")
-
-    print("Process completed.")
-
-if __name__ == "__main__":
-    main()
-
-# The main script has been updated to accept a command-line argument for the report type.
-# Key changes:
-# 1. Added argparse to handle command-line arguments.
-# 2. New --report-type argument to specify which type of report to generate.
-# 3. Pass the report_type to the generate_html_report function.
-# 4. Updated print statements to reflect the chosen report type.
-#
-# To run the script for a specific report type, use:
-# python main.py --report-type vulnerabilities
-# python main.py --report-type deliverables
-# python main.py --report-type both
-# If no argument is provided, it defaults to 'both'.
-
-```
-
-These changes allow the user to choose which type of report they want to generate and send. Here's a summary of the modifications:
-
-1. In `report_generation.py`:
-   - Added a `report_type` parameter to `generate_html_report` function.
-   - Conditionally generate different parts of the report based on the `report_type`.
-   - Created separate sections for vulnerability details and deliverable details.
-   - Dynamically set the report title based on the `report_type`.
-
-2. In `main.py`:
-   - Added command-line argument parsing using `argparse`.
-   - Introduced a new `--report-type` argument to specify which report to generate.
-   - Pass the `report_type` to the `generate_html_report` function.
-   - Updated print statements to reflect the chosen report type.
-
-To use this new functionality, you can run the script with the following commands:
-
-- For vulnerabilities only: `python main.py --report-type vulnerabilities`
-- For deliverables only: `python main.py --report-type deliverables`
-- For both (default): `python main.py --report-type both` or simply `python main.py`
-
-This implementation provides flexibility for users to generate different types of reports as needed, while still maintaining the option to generate a comprehensive report covering both vulnerabilities and deliverables.
-
-Is there anything else you'd like me to modify or explain further?
+# This update resolves the KeyError for 'vulnerable_hosts_by_priority' and ensures that all generated content
+# is properly passed to the HTML template.
